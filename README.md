@@ -1,45 +1,108 @@
-# Welcome to your Convex + React (Vite) + Convex Auth app
+# Breastmilk Pump Tracker
 
-This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
+A full-stack web application for tracking breastmilk pumping sessions with timer functionality, session history, and statistics.
 
-After the initial setup (<2 minutes) you'll have a working full-stack app using:
+## Features
 
-- Convex as your backend (database, server logic)
-- [React](https://react.dev/) as your frontend (web page interactivity)
-- [Vite](https://vitest.dev/) for optimized web hosting
-- [Tailwind](https://tailwindcss.com/) for building great looking UI
-- [Convex Auth](https://labs.convex.dev/auth) for authentication
+- **Session Timer** - Track pump and rest intervals with countdown timer
+- **Two Session Types**
+  - Regular pumping sessions
+  - Power pumping sessions (alternating pump/rest cycles)
+- **Audio Alerts** - Persistent alarm sounds when intervals change
+- **Session History** - View and manage past pumping sessions
+- **Statistics Dashboard** - Charts and insights on pumping patterns
+- **User Preferences** - Customize session durations and settings
+- **Onboarding Wizard** - Guided setup for first-time users
 
-## Get started
+## Tech Stack
 
-If you just cloned this codebase and didn't use `npm create convex`, run:
+- **Frontend**: React 19, Vite, TanStack Router
+- **Backend**: Convex (serverless database + functions)
+- **Auth**: @convex-dev/auth with Password provider
+- **UI**: shadcn/ui, Tailwind CSS 4
+- **Charts**: Recharts
+- **Date Handling**: date-fns
 
-```
-npm install
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+- A [Convex](https://convex.dev/) account
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/rahmanaul/breastmilk-pump-tracker.git
+   cd breastmilk-pump-tracker
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+   This will start both the Vite frontend and Convex backend concurrently.
+
+## Development Commands
+
+```bash
+# Start development (frontend + backend)
 npm run dev
+
+# Run frontend only
+npm run dev:frontend
+
+# Run Convex backend only
+npm run dev:backend
+
+# Build for production
+npm run build
+
+# Lint TypeScript and ESLint
+npm run lint
+
+# Preview production build
+npm run preview
 ```
 
-If you're reading this README on GitHub and want to use this template, run:
+## Project Structure
 
 ```
-npm create convex@latest -- -t react-vite-convexauth
+src/
+├── components/
+│   ├── ui/              # shadcn/ui components
+│   └── layout/          # Layout, Navigation
+├── routes/              # TanStack Router file-based routes
+│   ├── __root.tsx       # Root layout with auth
+│   ├── index.tsx        # Dashboard
+│   ├── onboarding.tsx   # First-time setup wizard
+│   ├── session.tsx      # Timer with pump/rest intervals
+│   ├── history.tsx      # Past sessions
+│   ├── stats.tsx        # Charts and statistics
+│   └── settings.tsx     # User preferences
+├── hooks/
+│   ├── useTimer.ts      # Timer logic with interval tracking
+│   └── useAudioAlert.ts # Persistent alarm sound
+└── lib/
+    └── utils.ts         # Utility functions
+
+convex/
+├── schema.ts            # Database schema
+├── sessions.ts          # Pumping session CRUD
+├── preferences.ts       # User preferences
+├── stats.ts             # Statistics queries
+├── auth.ts              # Auth configuration
+└── http.ts              # HTTP routes for auth
 ```
 
-For more information on how to configure Convex Auth, check out the [Convex Auth docs](https://labs.convex.dev/auth/).
+## License
 
-For more examples of different Convex Auth flows, check out this [example repo](https://www.convex.dev/templates/convex-auth).
-
-## Learn more
-
-To learn more about developing your project with Convex, check out:
-
-- The [Tour of Convex](https://docs.convex.dev/get-started) for a thorough introduction to Convex principles.
-- The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
-- [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
-
-## Join the community
-
-Join thousands of developers building full-stack apps with Convex:
-
-- Join the [Convex Discord community](https://convex.dev/community) to get help in real-time.
-- Follow [Convex on GitHub](https://github.com/get-convex/), star and contribute to the open-source implementation of Convex.
+This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.txt) file for details.

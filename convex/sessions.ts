@@ -276,7 +276,8 @@ export const getByDateRange = query({
       return [];
     }
 
-    // If startDate is 0, get all sessions for user (no date filter)
+    // If startDate is 0, get all completed sessions for user (no date filter)
+    // Use the original index with post-filtering for reliability
     if (args.startDate === 0) {
       const sessions = await ctx.db
         .query("pumpingSessions")
@@ -287,7 +288,7 @@ export const getByDateRange = query({
       return sessions.filter((s) => s.status === "completed");
     }
 
-    // Otherwise, filter by date range
+    // Filter by date range using original index with post-filtering
     const sessions = await ctx.db
       .query("pumpingSessions")
       .withIndex("by_user_and_time", (q) =>
@@ -300,6 +301,68 @@ export const getByDateRange = query({
     return sessions.filter(
       (s) => s.status === "completed" && s.startTime <= args.endDate
     );
+  },
+});
+
+// Paginated validator for return type
+const paginatedSessionsValidator = v.object({
+  sessions: v.array(sessionValidator),
+  nextCursor: v.union(v.string(), v.null()),
+  hasMore: v.boolean(),
+});
+
+// Get sessions by date range with pagination
+export const getByDateRangePaginated = query({
+  args: {
+    startDate: v.number(),
+    endDate: v.number(),
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: paginatedSessionsValidator,
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return { sessions: [], nextCursor: null, hasMore: false };
+    }
+
+    const pageSize = args.limit ?? 20;
+
+    // Build the base query using the original index
+    let query;
+    if (args.startDate === 0) {
+      query = ctx.db
+        .query("pumpingSessions")
+        .withIndex("by_user_and_time", (q) => q.eq("userId", userId))
+        .order("desc");
+    } else {
+      query = ctx.db
+        .query("pumpingSessions")
+        .withIndex("by_user_and_time", (q) =>
+          q.eq("userId", userId).gte("startTime", args.startDate)
+        )
+        .order("desc");
+    }
+
+    // Apply pagination
+    const paginationResult = await query.paginate({
+      cursor: args.cursor ?? null,
+      numItems: pageSize,
+    });
+
+    // Filter by status and endDate in memory
+    let sessions = paginationResult.page.filter(
+      (s) => s.status === "completed"
+    );
+    if (args.startDate !== 0 && args.endDate) {
+      sessions = sessions.filter((s) => s.startTime <= args.endDate);
+    }
+
+    return {
+      sessions,
+      nextCursor: paginationResult.continueCursor ?? null,
+      hasMore: !paginationResult.isDone,
+    };
   },
 });
 

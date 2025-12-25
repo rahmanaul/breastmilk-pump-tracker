@@ -28,6 +28,7 @@ export const getDailyStats = query({
     startDate.setDate(startDate.getDate() - args.days);
     startDate.setHours(0, 0, 0, 0);
 
+    // Query with date range, filter completed sessions in memory
     const sessions = await ctx.db
       .query("pumpingSessions")
       .withIndex("by_user_and_time", (q) =>
@@ -97,7 +98,10 @@ export const getDailyStats = query({
 
 // Get overall stats summary
 export const getSummary = query({
-  args: {},
+  args: {
+    // Optional: limit to last N days (default: 365 for reasonable performance)
+    days: v.optional(v.number()),
+  },
   returns: v.object({
     totalSessions: v.number(),
     totalVolume: v.number(),
@@ -129,7 +133,7 @@ export const getSummary = query({
       avgVolume: v.number(),
     }),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       return {
@@ -144,9 +148,19 @@ export const getSummary = query({
       };
     }
 
+    // Default to 365 days for "all time" stats (bounded for performance)
+    const daysLimit = args.days ?? 365;
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - daysLimit);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Query with date range, filter completed sessions in memory
     const sessions = await ctx.db
       .query("pumpingSessions")
-      .withIndex("by_user_and_time", (q) => q.eq("userId", userId))
+      .withIndex("by_user_and_time", (q) =>
+        q.eq("userId", userId).gte("startTime", startDate.getTime())
+      )
       .collect();
 
     const completedSessions = sessions.filter((s) => s.status === "completed");

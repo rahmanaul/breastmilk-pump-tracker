@@ -62,19 +62,19 @@ Optimizations for better user experience.
 
 ### Backend Optimizations
 
-- [ ] Move date grouping/aggregation to Convex backend
-- [ ] Optimize `getDailyStats` query to aggregate server-side
-- [ ] Add pagination for history queries
-- [ ] Implement cursor-based pagination for large datasets
-- [ ] Add database indexes for common query patterns
+- [x] Move date grouping/aggregation to Convex backend
+- [x] Optimize `getDailyStats` query to aggregate server-side
+- [x] Add pagination for history queries
+- [x] Implement cursor-based pagination for large datasets
+- [x] Add database indexes for common query patterns
 
 ### Frontend Optimizations
 
-- [ ] Implement `React.memo` for schedule cards
-- [ ] Add `useMemo` for expensive calculations
-- [ ] Implement virtual scrolling for history (100+ sessions)
-- [ ] Lazy load charts only when visible
-- [ ] Optimize bundle size with tree shaking analysis
+- [x] Implement `React.memo` for schedule cards
+- [x] Add `useMemo` for expensive calculations
+- [ ] Implement virtual scrolling for history (100+ sessions) - Deferred due to React re-render issues
+- [x] Lazy load charts only when visible
+- [x] Optimize bundle size with tree shaking analysis
 
 ### Offline Support
 

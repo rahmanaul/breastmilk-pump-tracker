@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { Trophy, TrendingUp, Droplets, Calendar, Clock, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useInView } from "react-intersection-observer";
 
 export const Route = createFileRoute("/stats")({
   component: Stats,
@@ -30,11 +31,65 @@ export const Route = createFileRoute("/stats")({
 
 type TimeRange = 7 | 14 | 30;
 
+// Memoized formatters for chart performance
+const dateTickFormatter = (date: string) => format(parseISO(date), "d");
+const dateLabelFormatter = (date: string | number) =>
+  format(parseISO(date as string), "MMM d, yyyy");
+const volumeFormatter = (value: number | string | undefined) => [
+  `${String(value ?? 0)} ml`,
+  "Volume",
+];
+const typeFormatter = (
+  value: number | string | undefined,
+  name: string | undefined
+) => [
+  `${String(value ?? 0)} ml`,
+  name === "regularVolume" ? "Regular" : "Power",
+];
+const legendFormatter = (value: string) =>
+  value === "regularVolume" ? "Regular" : "Power";
+
+// Tooltip style object (memoized at module level)
+const tooltipStyle = {
+  backgroundColor: "hsl(var(--background))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: "8px",
+};
+
 function Stats() {
   const [timeRange, setTimeRange] = useState<TimeRange>(7);
 
   const dailyStats = useQuery(api.stats.getDailyStats, { days: timeRange });
-  const summary = useQuery(api.stats.getSummary);
+  const summary = useQuery(api.stats.getSummary, {});
+
+  // Lazy loading for charts using intersection observer
+  const { ref: dailyChartRef, inView: dailyChartInView } = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+  });
+
+  const { ref: comparisonChartRef, inView: comparisonChartInView } = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+  });
+
+  // Check if daily stats has data
+  const hasDailyData = useMemo(
+    () =>
+      dailyStats !== undefined &&
+      dailyStats.length > 0 &&
+      dailyStats.some((d) => d.totalVolume > 0),
+    [dailyStats]
+  );
+
+  // Check if comparison data exists
+  const hasComparisonData = useMemo(
+    () =>
+      dailyStats !== undefined &&
+      dailyStats.length > 0 &&
+      dailyStats.some((d) => d.regularVolume > 0 || d.powerVolume > 0),
+    [dailyStats]
+  );
 
   return (
     <div className="p-4 space-y-6">
@@ -131,17 +186,16 @@ function Stats() {
         </div>
       )}
 
-      {/* Daily Volume Chart */}
-      <Card>
+      {/* Daily Volume Chart - Lazy loaded */}
+      <Card ref={dailyChartRef}>
         <CardHeader>
           <CardTitle className="text-base">Daily Volume</CardTitle>
           <CardDescription>Volume pumped each day (ml)</CardDescription>
         </CardHeader>
         <CardContent>
-          {dailyStats === undefined ? (
+          {dailyStats === undefined || !dailyChartInView ? (
             <Skeleton className="h-48 w-full rounded" />
-          ) : dailyStats.length === 0 ||
-            dailyStats.every((d) => d.totalVolume === 0) ? (
+          ) : !hasDailyData ? (
             <div className="h-48 flex items-center justify-center text-muted-foreground">
               No data available
             </div>
@@ -151,20 +205,14 @@ function Stats() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
                   dataKey="date"
-                  tickFormatter={(date) => format(parseISO(date), "d")}
+                  tickFormatter={dateTickFormatter}
                   className="text-xs"
                 />
                 <YAxis className="text-xs" />
                 <Tooltip
-                  labelFormatter={(date) =>
-                    format(parseISO(date as string), "MMM d, yyyy")
-                  }
-                  formatter={(value) => [`${String(value)} ml`, "Volume"]}
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--background))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                  }}
+                  labelFormatter={dateLabelFormatter}
+                  formatter={volumeFormatter}
+                  contentStyle={tooltipStyle}
                 />
                 <Bar
                   dataKey="totalVolume"
@@ -177,19 +225,16 @@ function Stats() {
         </CardContent>
       </Card>
 
-      {/* Regular vs Power Chart */}
-      <Card>
+      {/* Regular vs Power Chart - Lazy loaded */}
+      <Card ref={comparisonChartRef}>
         <CardHeader>
           <CardTitle className="text-base">Regular vs Power</CardTitle>
           <CardDescription>Compare session types</CardDescription>
         </CardHeader>
         <CardContent>
-          {dailyStats === undefined ? (
+          {dailyStats === undefined || !comparisonChartInView ? (
             <Skeleton className="h-48 w-full rounded" />
-          ) : dailyStats.length === 0 ||
-            dailyStats.every(
-              (d) => d.regularVolume === 0 && d.powerVolume === 0
-            ) ? (
+          ) : !hasComparisonData ? (
             <div className="h-48 flex items-center justify-center text-muted-foreground">
               No data available
             </div>
@@ -199,29 +244,16 @@ function Stats() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
                   dataKey="date"
-                  tickFormatter={(date) => format(parseISO(date), "d")}
+                  tickFormatter={dateTickFormatter}
                   className="text-xs"
                 />
                 <YAxis className="text-xs" />
                 <Tooltip
-                  labelFormatter={(date) =>
-                    format(parseISO(date as string), "MMM d, yyyy")
-                  }
-                  formatter={(value, name) => [
-                    `${String(value)} ml`,
-                    name === "regularVolume" ? "Regular" : "Power",
-                  ]}
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--background))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                  }}
+                  labelFormatter={dateLabelFormatter}
+                  formatter={typeFormatter}
+                  contentStyle={tooltipStyle}
                 />
-                <Legend
-                  formatter={(value) =>
-                    value === "regularVolume" ? "Regular" : "Power"
-                  }
-                />
+                <Legend formatter={legendFormatter} />
                 <Bar
                   dataKey="regularVolume"
                   fill="#3b82f6"

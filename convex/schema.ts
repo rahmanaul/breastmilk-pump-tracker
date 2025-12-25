@@ -45,7 +45,9 @@ export default defineSchema({
     latenessMinutes: v.optional(v.number()), // 0 = on time, >0 = late by N minutes
     isCompleted: v.optional(v.boolean()), // tuntas (true) or tidak tuntas (false)
     timerConfig: v.optional(timerConfigValidator), // config used for this session
-  }).index("by_user_and_time", ["userId", "startTime"]),
+  })
+    .index("by_user_and_time", ["userId", "startTime"])
+    .index("by_user_and_status_and_time", ["userId", "status", "startTime"]),
 
   // User preferences for pump durations
   userPreferences: defineTable({

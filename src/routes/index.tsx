@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -130,7 +130,11 @@ function Dashboard() {
         ) : (
           <div className="space-y-2">
             {scheduleStatus.map((item) => (
-              <ScheduleCard key={item.scheduleSlotId} item={item} />
+              <ScheduleCard
+                key={item.scheduleSlotId}
+                item={item}
+                currentTime={currentTime}
+              />
             ))}
           </div>
         )}
@@ -177,26 +181,26 @@ type ScheduleStatusItem = {
   isCompleted?: boolean;
 };
 
-function ScheduleCard({ item }: { item: ScheduleStatusItem }) {
+interface ScheduleCardProps {
+  item: ScheduleStatusItem;
+  currentTime: number;
+}
+
+// Memoized ScheduleCard component to prevent unnecessary re-renders
+const ScheduleCard = memo(function ScheduleCard({
+  item,
+  currentTime,
+}: ScheduleCardProps) {
   const navigate = useNavigate();
   const isRegular = item.sessionType === "regular";
 
-  // Use state + effect to calculate time-based values
-  const [isNext, setIsNext] = useState(false);
-
-  useEffect(() => {
-    const checkIsNext = () => {
-      const now = Date.now();
-      setIsNext(
-        item.status === "pending" &&
-          item.scheduledTimestamp <= now + 30 * 60 * 1000 // within 30 min
-      );
-    };
-    checkIsNext();
-    // Check every minute for time-based updates
-    const interval = setInterval(checkIsNext, 60000);
-    return () => clearInterval(interval);
-  }, [item.status, item.scheduledTimestamp]);
+  // Calculate isNext based on parent's currentTime (no per-card interval needed)
+  const isNext = useMemo(() => {
+    return (
+      item.status === "pending" &&
+      item.scheduledTimestamp <= currentTime + 30 * 60 * 1000 // within 30 min
+    );
+  }, [item.status, item.scheduledTimestamp, currentTime]);
 
   const handleStartSession = useCallback(() => {
     void navigate({
@@ -209,8 +213,8 @@ function ScheduleCard({ item }: { item: ScheduleStatusItem }) {
     });
   }, [navigate, item.scheduleSlotId, item.scheduledTimestamp, item.sessionType]);
 
-  // Status styling
-  const getStatusStyles = () => {
+  // Memoized status styling
+  const styles = useMemo(() => {
     switch (item.status) {
       case "completed":
         return {
@@ -249,9 +253,7 @@ function ScheduleCard({ item }: { item: ScheduleStatusItem }) {
           iconBg: isNext ? "bg-primary/10" : "bg-muted",
         };
     }
-  };
-
-  const styles = getStatusStyles();
+  }, [item.status, isNext]);
 
   return (
     <Card className={cn("border", styles.bg)}>
@@ -336,4 +338,4 @@ function ScheduleCard({ item }: { item: ScheduleStatusItem }) {
       </CardContent>
     </Card>
   );
-}
+});

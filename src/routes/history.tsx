@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
@@ -66,7 +66,10 @@ function History() {
   const [filter, setFilter] = useState<DateFilter>("week");
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
-  const dateRange = getDateRange(filter);
+  // Memoize dateRange to prevent infinite re-renders when filter is "all"
+  // The "all" filter uses Date.now() which changes every render
+  const dateRange = useMemo(() => getDateRange(filter), [filter]);
+
   const sessions = useQuery(api.sessions.getByDateRange, {
     startDate: dateRange.start,
     endDate: dateRange.end,
@@ -74,7 +77,16 @@ function History() {
 
   const deleteSession = useMutation(api.sessions.remove);
 
-  const handleDelete = async (sessionId: string) => {
+  // Stable callbacks to prevent re-renders
+  const handleToggle = useCallback((id: string) => {
+    setSelectedSession(id);
+  }, []);
+
+  const handleCollapse = useCallback(() => {
+    setSelectedSession(null);
+  }, []);
+
+  const handleDelete = useCallback(async (sessionId: string) => {
     if (confirm("Yakin ingin menghapus sesi ini?")) {
       try {
         await deleteSession({ sessionId: sessionId as any });
@@ -87,28 +99,38 @@ function History() {
         });
       }
     }
-  };
+  }, [deleteSession]);
 
-  // Group sessions by date
-  const groupedSessions = sessions?.reduce(
-    (groups, session) => {
-      const date = format(new Date(session.startTime), "yyyy-MM-dd");
-      if (!groups[date]) {
-        groups[date] = [];
-      }
-      groups[date].push(session);
-      return groups;
-    },
-    {} as Record<string, typeof sessions>
-  );
+  // Memoized: Group sessions by date
+  const groupedSessions = useMemo(() => {
+    if (!sessions) return {};
+    return sessions.reduce(
+      (groups, session) => {
+        const date = format(new Date(session.startTime), "yyyy-MM-dd");
+        if (!groups[date]) {
+          groups[date] = [];
+        }
+        groups[date].push(session);
+        return groups;
+      },
+      {} as Record<string, typeof sessions>
+    );
+  }, [sessions]);
 
-  const sortedDates = Object.keys(groupedSessions || {}).sort(
-    (a, b) => new Date(b).getTime() - new Date(a).getTime()
-  );
+  // Memoized: Sorted dates
+  const sortedDates = useMemo(() => {
+    return Object.keys(groupedSessions).sort(
+      (a, b) => new Date(b).getTime() - new Date(a).getTime()
+    );
+  }, [groupedSessions]);
 
-  // Calculate totals
-  const totalVolume = sessions?.reduce((sum, s) => sum + (s.volume || 0), 0) || 0;
-  const totalSessions = sessions?.length || 0;
+  // Memoized: Calculate totals
+  const { totalVolume, totalSessions } = useMemo(() => {
+    return {
+      totalVolume: sessions?.reduce((sum, s) => sum + (s.volume || 0), 0) || 0,
+      totalSessions: sessions?.length || 0,
+    };
+  }, [sessions]);
 
   return (
     <div className="p-4 space-y-4">
@@ -177,17 +199,14 @@ function History() {
                 {format(new Date(date), "EEEE, MMMM d, yyyy")}
               </h3>
               <div className="space-y-2">
-                {groupedSessions?.[date]?.map((session) => (
+                {groupedSessions[date]?.map((session) => (
                   <SessionCard
                     key={session._id}
-                    session={session}
+                    session={session as SessionData}
                     isExpanded={selectedSession === session._id}
-                    onToggle={() =>
-                      setSelectedSession(
-                        selectedSession === session._id ? null : session._id
-                      )
-                    }
-                    onDelete={() => void handleDelete(session._id)}
+                    onToggle={handleToggle}
+                    onCollapse={handleCollapse}
+                    onDelete={handleDelete}
                   />
                 ))}
               </div>
@@ -199,38 +218,63 @@ function History() {
   );
 }
 
-function SessionCard({
+// Session type for props
+type SessionData = {
+  _id: string;
+  sessionType: "regular" | "power";
+  startTime: number;
+  endTime?: number;
+  volume?: number;
+  totalPumpDuration?: number;
+  totalRestDuration?: number;
+  notes?: string;
+  intervals: Array<{
+    type: "pump" | "rest";
+    startTime: number;
+    endTime?: number;
+  }>;
+  latenessMinutes?: number;
+  isCompleted?: boolean;
+  scheduledTime?: number;
+};
+
+interface SessionCardProps {
+  session: SessionData;
+  isExpanded: boolean;
+  onToggle: (id: string) => void;
+  onCollapse: () => void;
+  onDelete: (id: string) => Promise<void>;
+}
+
+// Memoized SessionCard component to prevent unnecessary re-renders
+const SessionCard = memo(function SessionCard({
   session,
   isExpanded,
   onToggle,
+  onCollapse,
   onDelete,
-}: {
-  session: {
-    _id: string;
-    sessionType: "regular" | "power";
-    startTime: number;
-    endTime?: number;
-    volume?: number;
-    totalPumpDuration?: number;
-    totalRestDuration?: number;
-    notes?: string;
-    intervals: Array<{
-      type: "pump" | "rest";
-      startTime: number;
-      endTime?: number;
-    }>;
-    // NEW fields
-    latenessMinutes?: number;
-    isCompleted?: boolean;
-    scheduledTime?: number;
-  };
-  isExpanded: boolean;
-  onToggle: () => void;
-  onDelete: () => void;
-}) {
+}: SessionCardProps) {
   const isRegular = session.sessionType === "regular";
   const isLate = session.latenessMinutes !== undefined && session.latenessMinutes > 0;
   const isCompleted = session.isCompleted ?? true;
+
+  // Memoized toggle handler - uses stable callbacks
+  const handleToggle = useCallback(() => {
+    if (isExpanded) {
+      onCollapse();
+    } else {
+      onToggle(session._id);
+    }
+  }, [isExpanded, onToggle, onCollapse, session._id]);
+
+  // Memoized delete handler
+  const handleDelete = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      void onDelete(session._id);
+    },
+    [onDelete, session._id]
+  );
 
   return (
     <Card
@@ -238,7 +282,7 @@ function SessionCard({
         "cursor-pointer transition-colors",
         isExpanded && "ring-2 ring-primary"
       )}
-      onClick={onToggle}
+      onClick={handleToggle}
     >
       <CardContent className="py-3">
         <div className="flex items-center justify-between">
@@ -400,10 +444,7 @@ function SessionCard({
               variant="destructive"
               size="sm"
               className="w-full"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
+              onClick={handleDelete}
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Hapus Sesi
@@ -413,4 +454,4 @@ function SessionCard({
       </CardContent>
     </Card>
   );
-}
+});

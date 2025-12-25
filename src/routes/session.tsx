@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,6 +134,9 @@ function Session() {
       setPhase("timer");
     } catch (error) {
       console.error("Failed to start session:", error);
+      toast.error("Gagal memulai sesi", {
+        description: "Silakan coba lagi",
+      });
     }
   };
 
@@ -158,6 +162,7 @@ function Session() {
         });
       } catch (error) {
         console.error("Failed to switch interval:", error);
+        toast.error("Gagal mengubah interval");
       }
     }
   };
@@ -181,9 +186,15 @@ function Session() {
         notes: notes || undefined,
         isCompleted,
       });
+      toast.success("Sesi berhasil disimpan", {
+        description: `Volume: ${volume} ml`,
+      });
       void navigate({ to: "/" });
     } catch (error) {
       console.error("Failed to complete session:", error);
+      toast.error("Gagal menyimpan sesi", {
+        description: "Silakan coba lagi",
+      });
     } finally {
       setIsSubmitting(false);
     }

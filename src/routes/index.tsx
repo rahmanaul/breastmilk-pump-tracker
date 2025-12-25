@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,7 +40,33 @@ function formatScheduleTime(time: string): string {
 }
 
 function Dashboard() {
-  const scheduleStatus = useQuery(api.sessions.getTodayScheduleStatus);
+  // Track current time for schedule updates (refresh every minute)
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calculate client's local timezone info for accurate schedule matching
+  const { clientStartOfDay, clientNow } = useMemo(() => {
+    const now = new Date(currentTime);
+    return {
+      clientStartOfDay: new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate()
+      ).getTime(),
+      clientNow: currentTime,
+    };
+  }, [currentTime]);
+
+  const scheduleStatus = useQuery(api.sessions.getTodayScheduleStatus, {
+    clientStartOfDay,
+    clientNow,
+  });
   const todaySessions = useQuery(api.sessions.getToday);
 
   const totalVolume = todaySessions?.reduce((sum, s) => sum + (s.volume || 0), 0) || 0;

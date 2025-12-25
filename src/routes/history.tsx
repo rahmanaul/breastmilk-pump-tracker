@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -73,9 +74,17 @@ function History() {
   const deleteSession = useMutation(api.sessions.remove);
 
   const handleDelete = async (sessionId: string) => {
-    if (confirm("Are you sure you want to delete this session?")) {
-      await deleteSession({ sessionId: sessionId as any });
-      setSelectedSession(null);
+    if (confirm("Yakin ingin menghapus sesi ini?")) {
+      try {
+        await deleteSession({ sessionId: sessionId as any });
+        toast.success("Sesi berhasil dihapus");
+        setSelectedSession(null);
+      } catch (error) {
+        console.error("Failed to delete session:", error);
+        toast.error("Gagal menghapus sesi", {
+          description: "Silakan coba lagi",
+        });
+      }
     }
   };
 

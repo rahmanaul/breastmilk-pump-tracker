@@ -6,6 +6,7 @@ import { api } from "../../convex/_generated/api";
 import { useEffect } from "react";
 import { Layout } from "@/components/layout";
 import { useScheduleNotifications } from "@/hooks/useScheduleNotifications";
+import { Toaster } from "sonner";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -20,6 +21,7 @@ function RootLayout() {
       <Unauthenticated>
         <LoginPage />
       </Unauthenticated>
+      <Toaster position="top-center" richColors closeButton />
       <TanStackRouterDevtools />
     </>
   );

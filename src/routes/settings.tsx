@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,9 +131,13 @@ function Settings() {
         notificationsEnabled,
       });
       setSaved(true);
+      toast.success("Pengaturan tersimpan");
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
       console.error("Failed to save:", error);
+      toast.error("Gagal menyimpan pengaturan", {
+        description: "Silakan coba lagi",
+      });
     } finally {
       setIsSaving(false);
     }

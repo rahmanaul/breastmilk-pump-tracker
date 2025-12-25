@@ -57,6 +57,17 @@ export const start = mutation({
       throw new Error("Not authenticated");
     }
 
+    // Check for existing in-progress session
+    const existingSession = await ctx.db
+      .query("pumpingSessions")
+      .withIndex("by_user_and_time", (q) => q.eq("userId", userId))
+      .order("desc")
+      .first();
+
+    if (existingSession && existingSession.status === "in_progress") {
+      throw new Error("Sudah ada sesi yang sedang berjalan. Selesaikan dulu sesi tersebut.");
+    }
+
     const now = Date.now();
 
     // Calculate lateness if this is a scheduled session
@@ -356,9 +367,13 @@ const scheduleStatusValidator = v.object({
 
 // Get today's schedule with session status
 export const getTodayScheduleStatus = query({
-  args: {},
+  args: {
+    // Optional client timezone info for accurate schedule matching
+    clientStartOfDay: v.optional(v.number()), // Client's local midnight timestamp
+    clientNow: v.optional(v.number()), // Client's current timestamp
+  },
   returns: v.array(scheduleStatusValidator),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       return [];
@@ -374,13 +389,11 @@ export const getTodayScheduleStatus = query({
       return [];
     }
 
-    // Get start of today (midnight)
-    const now = new Date();
-    const startOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
+    // Use client's timezone info if provided, otherwise fall back to server time (UTC)
+    const now = args.clientNow ? new Date(args.clientNow) : new Date();
+    const startOfDay = args.clientStartOfDay
+      ? new Date(args.clientStartOfDay)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     // Get today's sessions (including in_progress)
     const todaySessions = await ctx.db

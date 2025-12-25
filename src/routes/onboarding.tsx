@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -83,9 +84,15 @@ function Onboarding() {
         sessionSchedule: defaultSchedule,
         notificationsEnabled: false,
       });
+      toast.success("Selamat datang!", {
+        description: "Pengaturan berhasil disimpan",
+      });
       void navigate({ to: "/" });
     } catch (error) {
       console.error("Failed to save preferences:", error);
+      toast.error("Gagal menyimpan pengaturan", {
+        description: "Silakan coba lagi",
+      });
     } finally {
       setIsLoading(false);
     }

@@ -137,7 +137,7 @@ function Dashboard() {
 
 // Schedule status type from backend
 type ScheduleStatusItem = {
-  scheduleSlotId: string;
+  scheduleSlotId?: string;
   time: string;
   scheduledTimestamp: number;
   sessionType: "regular" | "power";

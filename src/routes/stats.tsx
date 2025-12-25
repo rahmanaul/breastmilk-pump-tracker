@@ -160,7 +160,7 @@ function Stats() {
                   labelFormatter={(date) =>
                     format(parseISO(date as string), "MMM d, yyyy")
                   }
-                  formatter={(value: number) => [`${value} ml`, "Volume"]}
+                  formatter={(value) => [`${value} ml`, "Volume"]}
                   contentStyle={{
                     backgroundColor: "hsl(var(--background))",
                     border: "1px solid hsl(var(--border))",
@@ -210,7 +210,7 @@ function Stats() {
                   labelFormatter={(date) =>
                     format(parseISO(date as string), "MMM d, yyyy")
                   }
-                  formatter={(value: number, name: string) => [
+                  formatter={(value, name) => [
                     `${value} ml`,
                     name === "regularVolume" ? "Regular" : "Power",
                   ]}

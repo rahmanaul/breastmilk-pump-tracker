@@ -68,7 +68,6 @@ function Session() {
   const search = useSearch({ from: "/session" });
 
   const defaults = useQuery(api.preferences.getDefaults);
-  const _preferences = useQuery(api.preferences.get);
   const startSession = useMutation(api.sessions.start);
   const switchIntervalMutation = useMutation(api.sessions.switchInterval);
   const completeSession = useMutation(api.sessions.complete);

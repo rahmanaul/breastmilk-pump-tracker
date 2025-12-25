@@ -2,6 +2,26 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
+// Validate time format (HH:mm) - returns true if valid
+function isValidTimeFormat(time: string): boolean {
+  if (typeof time !== "string") return false;
+  const regex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  return regex.test(time);
+}
+
+// Validate schedule items array - returns error message or null if valid
+function validateScheduleItems(
+  items: Array<{ time: string; enabled: boolean }>
+): string | null {
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!isValidTimeFormat(item.time)) {
+      return `Invalid time format at position ${i + 1}: "${item.time}". Expected HH:mm format (e.g., 06:00, 14:30)`;
+    }
+  }
+  return null;
+}
+
 // Session schedule item validator (id and sessionType optional for backward compatibility)
 const scheduleItemValidator = v.object({
   id: v.optional(v.string()), // UUID for stable identification
@@ -122,6 +142,14 @@ export const save = mutation({
       throw new Error("Not authenticated");
     }
 
+    // Validate schedule time formats
+    if (args.sessionSchedule) {
+      const validationError = validateScheduleItems(args.sessionSchedule);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+    }
+
     const existing = await ctx.db
       .query("userPreferences")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -236,6 +264,12 @@ export const updateSchedule = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new Error("Not authenticated");
+    }
+
+    // Validate schedule time formats
+    const validationError = validateScheduleItems(args.sessionSchedule);
+    if (validationError) {
+      throw new Error(validationError);
     }
 
     const existing = await ctx.db

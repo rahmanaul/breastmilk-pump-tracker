@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import { format, parseISO } from "date-fns";
 import { Trophy, TrendingUp, Droplets, Calendar, Clock, Zap } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/stats")({
   component: Stats,
@@ -138,9 +139,7 @@ function Stats() {
         </CardHeader>
         <CardContent>
           {dailyStats === undefined ? (
-            <div className="h-48 flex items-center justify-center text-muted-foreground">
-              Loading...
-            </div>
+            <Skeleton className="h-48 w-full rounded" />
           ) : dailyStats.length === 0 ||
             dailyStats.every((d) => d.totalVolume === 0) ? (
             <div className="h-48 flex items-center justify-center text-muted-foreground">
@@ -160,7 +159,7 @@ function Stats() {
                   labelFormatter={(date) =>
                     format(parseISO(date as string), "MMM d, yyyy")
                   }
-                  formatter={(value) => [`${value} ml`, "Volume"]}
+                  formatter={(value) => [`${String(value)} ml`, "Volume"]}
                   contentStyle={{
                     backgroundColor: "hsl(var(--background))",
                     border: "1px solid hsl(var(--border))",
@@ -186,9 +185,7 @@ function Stats() {
         </CardHeader>
         <CardContent>
           {dailyStats === undefined ? (
-            <div className="h-48 flex items-center justify-center text-muted-foreground">
-              Loading...
-            </div>
+            <Skeleton className="h-48 w-full rounded" />
           ) : dailyStats.length === 0 ||
             dailyStats.every(
               (d) => d.regularVolume === 0 && d.powerVolume === 0
@@ -211,7 +208,7 @@ function Stats() {
                     format(parseISO(date as string), "MMM d, yyyy")
                   }
                   formatter={(value, name) => [
-                    `${value} ml`,
+                    `${String(value)} ml`,
                     name === "regularVolume" ? "Regular" : "Power",
                   ]}
                   contentStyle={{

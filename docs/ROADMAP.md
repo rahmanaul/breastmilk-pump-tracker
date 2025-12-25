@@ -25,13 +25,15 @@ Priority improvements to ensure stability and maintainability.
 - [x] Set up Vitest for unit testing
 - [x] Add unit tests for `useTimer` hook (21 tests)
 - [x] Add unit tests for `useAudioAlert` hook (13 tests)
-- [ ] Add integration tests for Convex functions (`sessions.ts`, `preferences.ts`, `stats.ts`)
-- [ ] Set up Playwright for E2E testing
-- [ ] Add E2E tests for critical user flows:
-  - [ ] Onboarding flow
-  - [ ] Session creation and completion
-  - [ ] History viewing and filtering
-  - [ ] Settings modification
+- [x] Add integration tests for Convex functions (`sessions.ts`, `preferences.ts`, `stats.ts`) (60 tests)
+- [x] Set up Playwright for E2E testing
+- [x] Add E2E tests for critical user flows:
+  - [x] Authentication flow tests
+  - [x] Application loading tests
+  - [ ] Onboarding flow (requires auth fixtures)
+  - [ ] Session creation and completion (requires auth fixtures)
+  - [ ] History viewing and filtering (requires auth fixtures)
+  - [ ] Settings modification (requires auth fixtures)
 
 ### Error Handling & User Feedback
 
@@ -41,16 +43,16 @@ Priority improvements to ensure stability and maintainability.
   - [x] Settings saved
   - [x] Onboarding completion
 - [x] Add error notifications with actionable messages
-- [ ] Improve loading states with skeleton components
+- [x] Improve loading states with skeleton components
 - [ ] Add retry mechanisms for failed operations
 
 ### Bug Fixes & Edge Cases
 
 - [x] Prevent concurrent sessions (only one `in_progress` at a time)
 - [x] Handle timezone properly for schedule matching
-- [ ] Handle schedules crossing midnight
-- [ ] Clean up incomplete sessions (stale `in_progress` sessions)
-- [ ] Validate time format input in schedule settings
+- [x] Handle schedules crossing midnight (N/A - current "today" view shows calendar day, not 24-hour rolling window)
+- [x] Clean up incomplete sessions (stale `in_progress` sessions via cron job)
+- [x] Validate time format input in schedule settings
 
 ---
 

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 const intervalValidator = v.object({
@@ -347,6 +347,91 @@ export const remove = mutation({
   },
 });
 
+// Cancel/abort the current in-progress session
+export const cancelCurrent = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Find in-progress session
+    const session = await ctx.db
+      .query("pumpingSessions")
+      .withIndex("by_user_and_time", (q) => q.eq("userId", userId))
+      .order("desc")
+      .first();
+
+    if (session && session.status === "in_progress") {
+      // Delete the orphaned/abandoned session
+      await ctx.db.delete(session._id);
+    }
+
+    return null;
+  },
+});
+
+// Internal: Clean up stale in-progress sessions (sessions older than threshold)
+// Default threshold is 2 hours (sessions in_progress for more than 2 hours are considered abandoned)
+export const cleanupOrphanedSessions = internalMutation({
+  args: {
+    maxAgeMs: v.optional(v.number()), // Maximum age in milliseconds, defaults to 2 hours
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const maxAge = args.maxAgeMs ?? 2 * 60 * 60 * 1000; // Default: 2 hours
+    const cutoffTime = Date.now() - maxAge;
+
+    // Find all in-progress sessions
+    const allSessions = await ctx.db.query("pumpingSessions").collect();
+
+    let deleted = 0;
+    for (const session of allSessions) {
+      // Only delete in_progress sessions that started before the cutoff time
+      if (session.status === "in_progress" && session.startTime < cutoffTime) {
+        await ctx.db.delete(session._id);
+        deleted++;
+      }
+    }
+
+    return deleted;
+  },
+});
+
+// User-facing: Clean up the user's own stale in-progress sessions
+export const cleanupStaleSessions = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // 2 hours threshold for stale sessions
+    const maxAge = 2 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - maxAge;
+
+    // Find user's in-progress sessions
+    const sessions = await ctx.db
+      .query("pumpingSessions")
+      .withIndex("by_user_and_time", (q) => q.eq("userId", userId))
+      .collect();
+
+    let deleted = 0;
+    for (const session of sessions) {
+      if (session.status === "in_progress" && session.startTime < cutoffTime) {
+        await ctx.db.delete(session._id);
+        deleted++;
+      }
+    }
+
+    return deleted;
+  },
+});
+
 // Schedule status item validator for return type
 const scheduleStatusValidator = v.object({
   scheduleSlotId: v.optional(v.string()), // optional for backward compatibility
@@ -410,10 +495,9 @@ export const getTodayScheduleStatus = query({
       if (!slot.enabled) continue;
 
       // Parse time "HH:mm" to get timestamp for today
+      // Calculate directly from client's start of day to avoid timezone issues
       const [hours, minutes] = slot.time.split(":").map(Number);
-      const scheduledDate = new Date(startOfDay);
-      scheduledDate.setHours(hours, minutes, 0, 0);
-      const scheduledTimestamp = scheduledDate.getTime();
+      const scheduledTimestamp = startOfDay.getTime() + (hours * 60 + minutes) * 60 * 1000;
 
       // Find session linked to this slot (by scheduleSlotId or by close time match)
       const linkedSession = todaySessions.find(

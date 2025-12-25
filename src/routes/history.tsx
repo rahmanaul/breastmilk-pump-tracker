@@ -16,6 +16,7 @@ import {
 } from "date-fns";
 import { Clock, Zap, Trash2, AlertCircle, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HistoryListSkeleton } from "@/components/skeletons";
 
 export const Route = createFileRoute("/history")({
   component: History,
@@ -161,7 +162,7 @@ function History() {
 
       {/* Sessions List */}
       {sessions === undefined ? (
-        <p className="text-center text-muted-foreground py-8">Memuat...</p>
+        <HistoryListSkeleton count={5} />
       ) : sessions.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center">

@@ -15,6 +15,9 @@ export default defineConfig([
       "postcss.config.js",
       "tailwind.config.js",
       "vite.config.ts",
+      "vitest.config.ts",
+      "playwright.config.ts",
+      "e2e/**",
     ],
   },
   {
@@ -89,6 +92,20 @@ export default defineConfig([
     files: ["src/components/ui/**/*.tsx"],
     rules: {
       // shadcn/ui components export both component and variant functions
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      // Allow using mock methods directly in test assertions
+      "@typescript-eslint/unbound-method": "off",
+    },
+  },
+  {
+    files: ["src/test/**/*.tsx"],
+    rules: {
+      // Test utilities re-export from testing-library
       "react-refresh/only-export-components": "off",
     },
   },

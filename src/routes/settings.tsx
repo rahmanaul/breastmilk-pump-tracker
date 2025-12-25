@@ -54,6 +54,20 @@ function generateId(): string {
   return Math.random().toString(36).substr(2, 9);
 }
 
+// Validate time format (HH:mm) - returns true if valid
+function isValidTimeFormat(time: string): boolean {
+  if (typeof time !== "string") return false;
+  const regex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  return regex.test(time);
+}
+
+// Normalize time to HH:mm format (pad single digit hours)
+function normalizeTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  if (isNaN(hours) || isNaN(minutes)) return time;
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
 function Settings() {
   const { signOut } = useAuthActions();
   const preferences = useQuery(api.preferences.get);
@@ -119,6 +133,18 @@ function Settings() {
   }, [defaults]);
 
   const handleSave = async () => {
+    // Validate all schedule times before saving
+    const invalidTimes = sessionSchedule
+      .map((s, i) => ({ index: i + 1, time: s.time, valid: isValidTimeFormat(s.time) }))
+      .filter((s) => !s.valid);
+
+    if (invalidTimes.length > 0) {
+      toast.error("Format waktu tidak valid", {
+        description: `Periksa jadwal ${invalidTimes.map((t) => `#${t.index}`).join(", ")}. Gunakan format HH:mm (contoh: 06:00, 14:30)`,
+      });
+      return;
+    }
+
     setIsSaving(true);
     setSaved(false);
     try {
@@ -171,8 +197,17 @@ function Settings() {
   };
 
   const updateSessionTime = (index: number, time: string) => {
+    // Normalize and validate time
+    const normalizedTime = normalizeTime(time);
+    if (!isValidTimeFormat(normalizedTime)) {
+      // Still update to show the invalid state, but don't save
+      const updated = [...sessionSchedule];
+      updated[index] = { ...updated[index], time };
+      setSessionSchedule(updated);
+      return;
+    }
     const updated = [...sessionSchedule];
-    updated[index] = { ...updated[index], time };
+    updated[index] = { ...updated[index], time: normalizedTime };
     setSessionSchedule(updated);
   };
 
@@ -366,7 +401,10 @@ function Settings() {
                     type="time"
                     value={session.time}
                     onChange={(e) => updateSessionTime(index, e.target.value)}
-                    className="w-24"
+                    className={cn(
+                      "w-32",
+                      !isValidTimeFormat(session.time) && "border-red-500 focus-visible:ring-red-500"
+                    )}
                   />
                   {/* Session Type Toggle */}
                   <div className="flex gap-1">

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { ScheduleListSkeleton } from "@/components/skeletons";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -116,7 +117,7 @@ function Dashboard() {
       <div>
         <h2 className="text-lg font-semibold mb-3">Jadwal Hari Ini</h2>
         {scheduleStatus === undefined ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <ScheduleListSkeleton count={4} />
         ) : scheduleStatus.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center">

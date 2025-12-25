@@ -1,5 +1,5 @@
 import { useMutation } from "convex/react";
-import { FunctionReference } from "convex/server";
+import { FunctionReference, DefaultFunctionArgs } from "convex/server";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -25,7 +25,7 @@ type MutateFunction<Args, Result> = (args: Args) => Promise<Result | undefined>;
  * Automatically retries failed mutations with exponential backoff.
  */
 export function useMutationWithRetry<
-  Mutation extends FunctionReference<"mutation", "public", unknown, unknown>
+  Mutation extends FunctionReference<"mutation", "public", DefaultFunctionArgs, unknown>
 >(
   mutation: Mutation,
   options: MutationWithRetryOptions = {}
@@ -81,7 +81,8 @@ export function useMutationWithRetry<
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const result = await rawMutation(args);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await (rawMutation as any)(args);
           setState({
             isLoading: false,
             isRetrying: false,

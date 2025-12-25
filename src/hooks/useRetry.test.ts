@@ -18,7 +18,7 @@ describe('useRetry', () => {
     const operation = vi.fn().mockResolvedValue('success');
     const { result } = renderHook(() => useRetry(operation));
 
-    let response: string | undefined;
+    let response: unknown;
     await act(async () => {
       response = await result.current.execute('arg1');
     });
@@ -38,7 +38,7 @@ describe('useRetry', () => {
       useRetry(operation, { onRetry, maxRetries: 2, initialDelay: 10 })
     );
 
-    let response: string | undefined;
+    let response: unknown;
     await act(async () => {
       response = await result.current.execute();
     });
@@ -56,18 +56,20 @@ describe('useRetry', () => {
       useRetry(operation, { maxRetries: 2, initialDelay: 10 })
     );
 
-    let caughtError: Error | null = null;
+    const errorHolder: { error: Error | null } = { error: null };
     await act(async () => {
       try {
         await result.current.execute();
       } catch (e) {
-        caughtError = e as Error;
+        errorHolder.error = e as Error;
       }
     });
 
-    expect(caughtError?.message).toBe('Always fails');
+    expect(errorHolder.error).not.toBeNull();
+    expect(errorHolder.error!.message).toBe('Always fails');
     expect(operation).toHaveBeenCalledTimes(3); // initial + 2 retries
-    expect(result.current.state.lastError?.message).toBe('Always fails');
+    expect(result.current.state.lastError).not.toBeNull();
+    expect(result.current.state.lastError!.message).toBe('Always fails');
   });
 
   it('should reset state', async () => {

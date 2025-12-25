@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { toast } from "sonner";
+import { useMutationWithRetry } from "@/hooks/useMutationWithRetry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,14 +73,19 @@ function Settings() {
   const { signOut } = useAuthActions();
   const preferences = useQuery(api.preferences.get);
   const defaults = useQuery(api.preferences.getDefaults);
-  const savePreferences = useMutation(api.preferences.save);
+  const { mutate: savePreferences, state: saveState } = useMutationWithRetry(
+    api.preferences.save,
+    {
+      errorMessage: "Gagal menyimpan pengaturan",
+      retryMessage: "Mencoba menyimpan pengaturan...",
+    }
+  );
 
   // Default timer settings
   const [pumpMinutes, setPumpMinutes] = useState(15);
   const [restMinutes, setRestMinutes] = useState(5);
   const [pumpCount, setPumpCount] = useState(2); // How many pump phases
   const [alertVolume, setAlertVolume] = useState(100);
-  const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Session schedule state with sessionType
@@ -145,27 +151,20 @@ function Settings() {
       return;
     }
 
-    setIsSaving(true);
     setSaved(false);
-    try {
-      await savePreferences({
-        defaultPumpDuration: pumpMinutes * 60,
-        defaultRestDuration: restMinutes * 60,
-        defaultCycles: pumpCount, // Backend stores as cycles
-        alertVolume,
-        sessionSchedule,
-        notificationsEnabled,
-      });
+    const result = await savePreferences({
+      defaultPumpDuration: pumpMinutes * 60,
+      defaultRestDuration: restMinutes * 60,
+      defaultCycles: pumpCount, // Backend stores as cycles
+      alertVolume,
+      sessionSchedule,
+      notificationsEnabled,
+    });
+
+    if (result !== undefined) {
       setSaved(true);
       toast.success("Pengaturan tersimpan");
       setTimeout(() => setSaved(false), 2000);
-    } catch (error) {
-      console.error("Failed to save:", error);
-      toast.error("Gagal menyimpan pengaturan", {
-        description: "Silakan coba lagi",
-      });
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -487,7 +486,7 @@ function Settings() {
       {/* Save Button */}
       <Button
         onClick={() => void handleSave()}
-        disabled={isSaving}
+        disabled={saveState.isLoading}
         className="w-full"
         size="lg"
       >
@@ -496,8 +495,8 @@ function Settings() {
             <Check className="mr-2 h-4 w-4" />
             Tersimpan!
           </>
-        ) : isSaving ? (
-          "Menyimpan..."
+        ) : saveState.isLoading ? (
+          saveState.isRetrying ? "Mencoba ulang..." : "Menyimpan..."
         ) : (
           <>
             <Save className="mr-2 h-4 w-4" />

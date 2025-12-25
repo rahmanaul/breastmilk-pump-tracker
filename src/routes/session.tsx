@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
+import { useMutationWithRetry } from "@/hooks/useMutationWithRetry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,9 +70,24 @@ function Session() {
   const search = useSearch({ from: "/session" });
 
   const defaults = useQuery(api.preferences.getDefaults);
-  const startSession = useMutation(api.sessions.start);
-  const switchIntervalMutation = useMutation(api.sessions.switchInterval);
-  const completeSession = useMutation(api.sessions.complete);
+  const { mutate: startSession } = useMutationWithRetry(api.sessions.start, {
+    errorMessage: "Gagal memulai sesi",
+    retryMessage: "Mencoba memulai sesi...",
+  });
+  const { mutate: switchIntervalMutation } = useMutationWithRetry(
+    api.sessions.switchInterval,
+    {
+      errorMessage: "Gagal mengubah interval",
+      maxRetries: 1, // Quick retry for interval switching
+    }
+  );
+  const { mutate: completeSession, state: completeState } = useMutationWithRetry(
+    api.sessions.complete,
+    {
+      errorMessage: "Gagal menyimpan sesi",
+      retryMessage: "Mencoba menyimpan sesi...",
+    }
+  );
 
   const [phase, setPhase] = useState<SessionPhase>("config");
   const [sessionType, setSessionType] = useState<SessionType>(
@@ -82,7 +98,6 @@ function Session() {
   const [volume, setVolume] = useState("");
   const [notes, setNotes] = useState("");
   const [isCompleted, setIsCompleted] = useState(true); // tuntas
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalPumpSeconds, setFinalPumpSeconds] = useState(0);
   const [finalRestSeconds, setFinalRestSeconds] = useState(0);
 
@@ -118,25 +133,21 @@ function Session() {
 
   const handleStartTimer = async (config: TimerConfig) => {
     setTimerConfig(config);
-    try {
-      const id = await startSession({
-        sessionType,
-        scheduleSlotId: scheduleInfo?.slotId,
-        scheduledTime: scheduleInfo?.scheduledTime,
-        timerConfig: {
-          pumpDuration: config.pumpDuration,
-          restDuration: config.restDuration,
-          cycles: config.pumpCount, // Backend stores as cycles, frontend uses pumpCount
-        },
-      });
+    const id = await startSession({
+      sessionType,
+      scheduleSlotId: scheduleInfo?.slotId,
+      scheduledTime: scheduleInfo?.scheduledTime,
+      timerConfig: {
+        pumpDuration: config.pumpDuration,
+        restDuration: config.restDuration,
+        cycles: config.pumpCount, // Backend stores as cycles, frontend uses pumpCount
+      },
+    });
+
+    if (id) {
       setSessionId(id);
       // Timer will start after state update, use effect
       setPhase("timer");
-    } catch (error) {
-      console.error("Failed to start session:", error);
-      toast.error("Gagal memulai sesi", {
-        description: "Silakan coba lagi",
-      });
     }
   };
 
@@ -155,15 +166,10 @@ function Session() {
 
     if (sessionId) {
       const newType = timer.currentIntervalType === "pump" ? "rest" : "pump";
-      try {
-        await switchIntervalMutation({
-          sessionId: sessionId as any,
-          newIntervalType: newType,
-        });
-      } catch (error) {
-        console.error("Failed to switch interval:", error);
-        toast.error("Gagal mengubah interval");
-      }
+      await switchIntervalMutation({
+        sessionId: sessionId as any,
+        newIntervalType: newType,
+      });
     }
   };
 
@@ -178,25 +184,18 @@ function Session() {
   const handleCompleteSession = useCallback(async () => {
     if (!sessionId || !volume) return;
 
-    setIsSubmitting(true);
-    try {
-      await completeSession({
-        sessionId: sessionId as any,
-        volume: parseFloat(volume),
-        notes: notes || undefined,
-        isCompleted,
-      });
+    const result = await completeSession({
+      sessionId: sessionId as any,
+      volume: parseFloat(volume),
+      notes: notes || undefined,
+      isCompleted,
+    });
+
+    if (result !== undefined) {
       toast.success("Sesi berhasil disimpan", {
         description: `Volume: ${volume} ml`,
       });
       void navigate({ to: "/" });
-    } catch (error) {
-      console.error("Failed to complete session:", error);
-      toast.error("Gagal menyimpan sesi", {
-        description: "Silakan coba lagi",
-      });
-    } finally {
-      setIsSubmitting(false);
     }
   }, [sessionId, volume, notes, isCompleted, completeSession, navigate]);
 
@@ -259,7 +258,7 @@ function Session() {
           onNotesChange={setNotes}
           onIsCompletedChange={setIsCompleted}
           onSubmit={() => void handleCompleteSession()}
-          isSubmitting={isSubmitting}
+          isSubmitting={completeState.isLoading}
         />
       )}
     </div>

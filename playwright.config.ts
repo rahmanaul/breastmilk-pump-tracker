@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+
+const authFile = path.join(__dirname, 'e2e', '.auth', 'user.json');
 
 /**
  * Playwright configuration for Breastmilk Pump Tracker E2E tests
@@ -33,9 +36,28 @@ export default defineConfig({
 
   /* Configure projects for major browsers */
   projects: [
+    // Setup project - creates authenticated state
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+    },
+
+    // Unauthenticated tests (auth flow, etc.)
+    {
+      name: 'unauthenticated',
+      testMatch: '**/auth.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
+    },
+
+    // Authenticated tests - depend on setup
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: authFile,
+      },
+      dependencies: ['setup'],
+      testIgnore: ['**/auth.spec.ts', '**/*.setup.ts'],
     },
     // Enable these for comprehensive testing
     // {

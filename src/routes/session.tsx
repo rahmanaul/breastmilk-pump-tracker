@@ -120,6 +120,9 @@ function Session() {
 
   const defaults = useQuery(api.preferences.getDefaults);
 
+  // Query for current active session (for automatic resume detection)
+  const currentSession = useQuery(api.sessions.getCurrent);
+
   // Query for existing session if resuming
   const existingSession = useQuery(
     api.sessions.getById,
@@ -180,6 +183,18 @@ function Session() {
       audioAlert.stop();
     },
   });
+
+  // Auto-detect active session and navigate to resume it
+  useEffect(() => {
+    if (currentSession && !search.resume && currentSession.status === "in_progress") {
+      // Automatically navigate to resume the active session
+      void navigate({
+        to: "/session",
+        search: { resume: currentSession._id },
+        replace: true, // Replace history so back button doesn't loop
+      });
+    }
+  }, [currentSession, search.resume, navigate]);
 
   // Handle resuming an existing session
   useEffect(() => {
@@ -291,12 +306,12 @@ function Session() {
     }
   }, [sessionId, volume, notes, isCompleted, completeSession, navigate]);
 
-  // Show loading while fetching defaults or existing session
-  if (!defaults || (search.resume && existingSession === undefined)) {
+  // Show loading while fetching defaults, current session, or existing session
+  if (!defaults || currentSession === undefined || (search.resume && existingSession === undefined)) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
         <p className="text-muted-foreground">
-          {search.resume ? "Melanjutkan sesi..." : "Loading..."}
+          {search.resume || currentSession ? "Melanjutkan sesi..." : "Loading..."}
         </p>
       </div>
     );

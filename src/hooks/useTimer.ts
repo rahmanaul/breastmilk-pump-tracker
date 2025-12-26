@@ -87,6 +87,7 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
 
   const intervalRef = useRef<number | null>(null);
   const currentIntervalStartRef = useRef<number | null>(null);
+  const elapsedSecondsRef = useRef<number>(0); // Track elapsed time for pause/resume
 
   const targetSeconds = currentIntervalType === "pump" ? pumpDuration : restDuration;
   const remainingSeconds = Math.max(0, targetSeconds - elapsedSeconds);
@@ -111,6 +112,7 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
           const actualElapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
 
           setElapsedSeconds(actualElapsed);
+          elapsedSecondsRef.current = actualElapsed; // Keep ref in sync
 
           // Check if we've reached the target
           if (actualElapsed >= targetSeconds && !isAlarmTriggered) {
@@ -164,17 +166,18 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
       const now = Date.now();
       const elapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
       setElapsedSeconds(elapsed);
+      elapsedSecondsRef.current = elapsed; // Store in ref for resume
     }
   }, []);
 
   const resume = useCallback(() => {
-    // Adjust start time to account for paused duration
+    // Adjust start time to account for paused duration using ref (not stale closure)
     if (currentIntervalStartRef.current) {
       const now = Date.now();
-      currentIntervalStartRef.current = now - (elapsedSeconds * 1000);
+      currentIntervalStartRef.current = now - (elapsedSecondsRef.current * 1000);
     }
     setIsPaused(false);
-  }, [elapsedSeconds]);
+  }, []); // No dependencies - use ref instead
 
   const switchInterval = useCallback(() => {
     if (!isRunning) return;

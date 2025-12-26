@@ -185,7 +185,14 @@ function Session() {
       const message = timer.currentIntervalType === "pump"
         ? `Pumping selesai! (Pump ${timer.currentPump} dari ${timer.totalPumps})`
         : `Istirahat selesai! Lanjut ke Pump ${timer.currentPump + 1}`;
-      void audioAlert.play(message);
+
+      // Play alarm with error handling
+      audioAlert.play(message).catch((err) => {
+        console.error("Failed to play alarm:", err);
+        toast.error("Alarm gagal berbunyi", {
+          description: "Periksa pengaturan notifikasi browser Anda",
+        });
+      });
     },
     onAllCyclesComplete: () => {
       // Auto-stop when all pumps complete

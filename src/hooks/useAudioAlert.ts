@@ -1,8 +1,17 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 
+// Constants for alarm configuration
+const ALARM_FREQUENCY_HIGH = 800; // Hz
+const ALARM_FREQUENCY_LOW = 600; // Hz
+const ALARM_PULSE_INTERVAL = 500; // ms
+const ALARM_GAIN = 0.5;
+const VIBRATE_PATTERN = [500, 200, 500, 200, 500, 200] as const;
+const VIBRATE_REPEAT_INTERVAL = 2000; // ms
+const NOTIFICATION_AUTO_CLOSE_TIMEOUT = 30000; // ms
+
 interface AudioAlertState {
   isPlaying: boolean;
-  play: (message?: string) => void;
+  play: (message?: string) => Promise<void>;
   stop: () => void;
   requestPermissions: () => Promise<boolean>;
 }
@@ -14,6 +23,8 @@ export function useAudioAlert(): AudioAlertState {
   const intervalRef = useRef<number | null>(null);
   const isPlayingRef = useRef(false); // Synchronous check to prevent race conditions
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const notificationRef = useRef<Notification | null>(null);
+  const notificationTimeoutRef = useRef<number | null>(null);
 
   // Request notification permission on mount
   useEffect(() => {
@@ -53,6 +64,14 @@ export function useAudioAlert(): AudioAlertState {
 
       // Show notification (works even when app is in background)
       if ("Notification" in window && Notification.permission === "granted") {
+        // Close previous notification if exists
+        if (notificationRef.current) {
+          notificationRef.current.close();
+        }
+        if (notificationTimeoutRef.current) {
+          clearTimeout(notificationTimeoutRef.current);
+        }
+
         const notification = new Notification("Breastmilk Pump Timer", {
           body: message,
           icon: "/favicon.ico",
@@ -61,8 +80,13 @@ export function useAudioAlert(): AudioAlertState {
           tag: "pump-alarm", // Replace previous notifications
         });
 
-        // Auto-close notification after 30 seconds as fallback
-        setTimeout(() => notification.close(), 30000);
+        notificationRef.current = notification;
+
+        // Auto-close notification after timeout as fallback
+        notificationTimeoutRef.current = window.setTimeout(() => {
+          notification.close();
+          notificationRef.current = null;
+        }, NOTIFICATION_AUTO_CLOSE_TIMEOUT);
       }
 
       // Create audio context
@@ -79,9 +103,9 @@ export function useAudioAlert(): AudioAlertState {
       gainNode.connect(audioContext.destination);
 
       // Loud, attention-grabbing alarm
-      oscillator.frequency.value = 800;
+      oscillator.frequency.value = ALARM_FREQUENCY_HIGH;
       oscillator.type = "square";
-      gainNode.gain.value = 0.5;
+      gainNode.gain.value = ALARM_GAIN;
 
       oscillator.start();
       oscillatorRef.current = oscillator;
@@ -90,22 +114,21 @@ export function useAudioAlert(): AudioAlertState {
       let high = true;
       intervalRef.current = window.setInterval(() => {
         if (oscillatorRef.current) {
-          oscillatorRef.current.frequency.value = high ? 800 : 600;
+          oscillatorRef.current.frequency.value = high ? ALARM_FREQUENCY_HIGH : ALARM_FREQUENCY_LOW;
           high = !high;
         }
-      }, 500);
+      }, ALARM_PULSE_INTERVAL);
 
       setIsPlaying(true);
 
       // Try to trigger vibration on mobile (continuous pattern)
       if ("vibrate" in navigator) {
-        // Vibrate in a pattern: 500ms on, 200ms off, repeating
         const vibratePattern = () => {
-          navigator.vibrate([500, 200, 500, 200, 500, 200]);
+          navigator.vibrate(VIBRATE_PATTERN);
         };
         vibratePattern();
-        // Continue vibrating every 2 seconds
-        const vibrateInterval = window.setInterval(vibratePattern, 2000);
+        // Continue vibrating at intervals
+        const vibrateInterval = window.setInterval(vibratePattern, VIBRATE_REPEAT_INTERVAL);
         (intervalRef as any).vibrateInterval = vibrateInterval;
       }
     } catch (error) {
@@ -146,6 +169,16 @@ export function useAudioAlert(): AudioAlertState {
     // Stop vibration
     if ("vibrate" in navigator) {
       navigator.vibrate(0);
+    }
+
+    // Close notification
+    if (notificationRef.current) {
+      notificationRef.current.close();
+      notificationRef.current = null;
+    }
+    if (notificationTimeoutRef.current) {
+      clearTimeout(notificationTimeoutRef.current);
+      notificationTimeoutRef.current = null;
     }
 
     // Release wake lock

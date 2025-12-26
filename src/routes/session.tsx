@@ -147,6 +147,12 @@ function Session() {
       retryMessage: "Mencoba menyimpan sesi...",
     }
   );
+  const { mutate: cancelCurrentSession } = useMutationWithRetry(
+    api.sessions.cancelCurrent,
+    {
+      errorMessage: "Gagal membatalkan sesi",
+    }
+  );
 
   const [phase, setPhase] = useState<SessionPhase>("config");
   const [sessionType, setSessionType] = useState<SessionType>(
@@ -184,17 +190,6 @@ function Session() {
     },
   });
 
-  // Auto-detect active session and navigate to resume it
-  useEffect(() => {
-    if (currentSession && !search.resume && currentSession.status === "in_progress") {
-      // Automatically navigate to resume the active session
-      void navigate({
-        to: "/session",
-        search: { resume: currentSession._id },
-        replace: true, // Replace history so back button doesn't loop
-      });
-    }
-  }, [currentSession, search.resume, navigate]);
 
   // Handle resuming an existing session
   useEffect(() => {
@@ -306,6 +301,12 @@ function Session() {
     }
   }, [sessionId, volume, notes, isCompleted, completeSession, navigate]);
 
+  const handleCancelAndStartNew = async () => {
+    await cancelCurrentSession({});
+    toast.success("Sesi sebelumnya dibatalkan");
+    // The page will re-render and allow starting new session
+  };
+
   // Show loading while fetching defaults, current session, or existing session
   if (!defaults || currentSession === undefined || (search.resume && existingSession === undefined)) {
     return (
@@ -339,6 +340,9 @@ function Session() {
           defaults={defaults}
           onStart={(config) => void handleStartTimer(config)}
           isFromSchedule={!!scheduleInfo}
+          currentSession={currentSession}
+          onResumeSession={() => void navigate({ to: "/session", search: { resume: currentSession!._id } })}
+          onCancelAndStartNew={() => void handleCancelAndStartNew()}
         />
       )}
 
@@ -395,6 +399,9 @@ function SessionConfig({
   defaults,
   onStart,
   isFromSchedule,
+  currentSession,
+  onResumeSession,
+  onCancelAndStartNew,
 }: {
   sessionType: SessionType;
   onSessionTypeChange: (type: SessionType) => void;
@@ -402,6 +409,9 @@ function SessionConfig({
   defaults: { pumpDuration: number; restDuration: number; cycles: number };
   onStart: (config: TimerConfig) => void;
   isFromSchedule: boolean;
+  currentSession: any; // Active session if exists
+  onResumeSession: () => void;
+  onCancelAndStartNew: () => void;
 }) {
   const [pumpMinutes, setPumpMinutes] = useState(Math.floor(defaults.pumpDuration / 60));
   const [restMinutes, setRestMinutes] = useState(Math.floor(defaults.restDuration / 60));
@@ -427,6 +437,39 @@ function SessionConfig({
           Atur durasi pumping dan istirahat
         </p>
       </div>
+
+      {/* Active Session Banner */}
+      {currentSession && currentSession.status === "in_progress" && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="text-center">
+                <p className="font-semibold text-amber-900 dark:text-amber-100">
+                  Kamu punya sesi yang sedang berjalan
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                  Lanjutkan sesi sebelumnya atau batalkan dan mulai yang baru
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={onResumeSession}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                >
+                  Lanjutkan Sesi
+                </Button>
+                <Button
+                  onClick={onCancelAndStartNew}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Batalkan & Mulai Baru
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Session Type Selector */}
       <Card>

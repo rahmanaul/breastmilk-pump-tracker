@@ -162,7 +162,7 @@ describe("useAudioAlert", () => {
         result.current.play();
       });
 
-      expect(navigator.vibrate).toHaveBeenCalledWith([500, 200]);
+      expect(navigator.vibrate).toHaveBeenCalledWith([500, 200, 500, 200, 500, 200]);
     });
   });
 

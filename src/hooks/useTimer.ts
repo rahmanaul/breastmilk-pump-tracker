@@ -102,21 +102,22 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
     .reduce((sum, i) => sum + i.duration, 0) +
     (isRunning && currentIntervalType === "rest" ? elapsedSeconds : 0);
 
-  // Timer tick effect
+  // Timer tick effect - Use actual time instead of counter for accuracy
   useEffect(() => {
     if (isRunning && !isPaused && !isAlarmTriggered && !isSessionComplete) {
       intervalRef.current = window.setInterval(() => {
-        setElapsedSeconds((prev) => {
-          const newElapsed = prev + 1;
+        if (currentIntervalStartRef.current) {
+          const now = Date.now();
+          const actualElapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
+
+          setElapsedSeconds(actualElapsed);
 
           // Check if we've reached the target
-          if (newElapsed >= targetSeconds && !isAlarmTriggered) {
+          if (actualElapsed >= targetSeconds && !isAlarmTriggered) {
             setIsAlarmTriggered(true);
             onAlarmTrigger?.();
           }
-
-          return newElapsed;
-        });
+        }
       }, 1000);
 
       return () => {
@@ -158,11 +159,22 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
 
   const pause = useCallback(() => {
     setIsPaused(true);
+    // Store elapsed time at pause to resume from correct position later
+    if (currentIntervalStartRef.current) {
+      const now = Date.now();
+      const elapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
+      setElapsedSeconds(elapsed);
+    }
   }, []);
 
   const resume = useCallback(() => {
+    // Adjust start time to account for paused duration
+    if (currentIntervalStartRef.current) {
+      const now = Date.now();
+      currentIntervalStartRef.current = now - (elapsedSeconds * 1000);
+    }
     setIsPaused(false);
-  }, []);
+  }, [elapsedSeconds]);
 
   const switchInterval = useCallback(() => {
     if (!isRunning) return;

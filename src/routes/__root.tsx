@@ -24,7 +24,7 @@ function RootLayout() {
         <LoginPage />
       </Unauthenticated>
       <Toaster position="top-center" richColors closeButton />
-      <TanStackRouterDevtools />
+      {import.meta.env.DEV && <TanStackRouterDevtools />}
     </>
   );
 }

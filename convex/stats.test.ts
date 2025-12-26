@@ -35,15 +35,15 @@ describe("stats", () => {
 
     it("should calculate daily stats correctly", async () => {
       const now = Date.now();
-      const today = new Date().toISOString().split("T")[0];
+      const today = new Date(now).toISOString().split("T")[0];
 
-      // Create sessions for today
+      // Create sessions using direct insert with userId (consistent with other passing tests)
       await t.run(async (ctx) => {
         await ctx.db.insert("pumpingSessions", {
           userId,
           sessionType: "regular",
-          startTime: now - 3600000, // 1 hour ago
-          endTime: now - 3000000,
+          startTime: now,
+          endTime: now + 600000,
           volume: 100,
           intervals: [],
           status: "completed",
@@ -52,8 +52,8 @@ describe("stats", () => {
         await ctx.db.insert("pumpingSessions", {
           userId,
           sessionType: "power",
-          startTime: now - 2000000,
-          endTime: now - 1000000,
+          startTime: now + 1000000,
+          endTime: now + 1600000,
           volume: 80,
           intervals: [],
           status: "completed",
@@ -142,16 +142,23 @@ describe("stats", () => {
     });
 
     it("should calculate summary correctly", async () => {
-      const now = Date.now();
-      const yesterday = now - 86400000;
+      // Use noon UTC to ensure we're clearly in "today" and avoid midnight boundary issues
+      const todayNoon = new Date();
+      todayNoon.setUTCHours(12, 0, 0, 0);
+      const todayTimestamp = todayNoon.getTime();
+
+      // Yesterday at noon UTC
+      const yesterdayNoon = new Date(todayNoon);
+      yesterdayNoon.setUTCDate(yesterdayNoon.getUTCDate() - 1);
+      const yesterdayTimestamp = yesterdayNoon.getTime();
 
       await t.run(async (ctx) => {
         // Today: 2 regular sessions
         await ctx.db.insert("pumpingSessions", {
           userId,
           sessionType: "regular",
-          startTime: now - 3600000,
-          endTime: now - 3000000,
+          startTime: todayTimestamp,
+          endTime: todayTimestamp + 600000,
           volume: 120,
           intervals: [],
           status: "completed",
@@ -160,8 +167,8 @@ describe("stats", () => {
         await ctx.db.insert("pumpingSessions", {
           userId,
           sessionType: "regular",
-          startTime: now - 2000000,
-          endTime: now - 1000000,
+          startTime: todayTimestamp + 1000000,
+          endTime: todayTimestamp + 1600000,
           volume: 80,
           intervals: [],
           status: "completed",
@@ -171,8 +178,8 @@ describe("stats", () => {
         await ctx.db.insert("pumpingSessions", {
           userId,
           sessionType: "power",
-          startTime: yesterday,
-          endTime: yesterday + 1000,
+          startTime: yesterdayTimestamp,
+          endTime: yesterdayTimestamp + 600000,
           volume: 150,
           intervals: [],
           status: "completed",

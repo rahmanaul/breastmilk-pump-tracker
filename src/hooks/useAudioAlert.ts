@@ -59,7 +59,6 @@ export function useAudioAlert(): AudioAlertState {
           badge: "/favicon.ico",
           requireInteraction: true, // Notification stays until user interacts
           tag: "pump-alarm", // Replace previous notifications
-          vibrate: [500, 200, 500, 200, 500], // Vibration pattern
         });
 
         // Auto-close notification after 30 seconds as fallback

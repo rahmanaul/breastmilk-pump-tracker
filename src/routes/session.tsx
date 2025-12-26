@@ -182,7 +182,17 @@ function Session() {
     restDuration: timerConfig?.restDuration ?? 300,
     totalPumps: timerConfig?.pumpCount ?? 1,
     onAlarmTrigger: () => {
-      audioAlert.play();
+      const message = timer.currentIntervalType === "pump"
+        ? `Pumping selesai! (Pump ${timer.currentPump} dari ${timer.totalPumps})`
+        : `Istirahat selesai! Lanjut ke Pump ${timer.currentPump + 1}`;
+
+      // Play alarm with error handling
+      audioAlert.play(message).catch((err) => {
+        console.error("Failed to play alarm:", err);
+        toast.error("Alarm gagal berbunyi", {
+          description: "Periksa pengaturan notifikasi browser Anda",
+        });
+      });
     },
     onAllCyclesComplete: () => {
       // Auto-stop when all pumps complete
@@ -234,6 +244,14 @@ function Session() {
   }, [timer.isAlarmTriggered, audioAlert]);
 
   const handleStartTimer = async (config: TimerConfig) => {
+    // Request notification permission before starting timer
+    const permissionGranted = await audioAlert.requestPermissions();
+    if (!permissionGranted) {
+      toast.info("Izin notifikasi diperlukan", {
+        description: "Untuk alarm yang lebih baik, aktifkan notifikasi di pengaturan browser",
+      });
+    }
+
     setTimerConfig(config);
     const id = await startSession({
       sessionType,

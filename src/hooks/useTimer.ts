@@ -87,6 +87,7 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
 
   const intervalRef = useRef<number | null>(null);
   const currentIntervalStartRef = useRef<number | null>(null);
+  const elapsedSecondsRef = useRef<number>(0); // Track elapsed time for pause/resume
 
   const targetSeconds = currentIntervalType === "pump" ? pumpDuration : restDuration;
   const remainingSeconds = Math.max(0, targetSeconds - elapsedSeconds);
@@ -102,21 +103,23 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
     .reduce((sum, i) => sum + i.duration, 0) +
     (isRunning && currentIntervalType === "rest" ? elapsedSeconds : 0);
 
-  // Timer tick effect
+  // Timer tick effect - Use actual time instead of counter for accuracy
   useEffect(() => {
     if (isRunning && !isPaused && !isAlarmTriggered && !isSessionComplete) {
       intervalRef.current = window.setInterval(() => {
-        setElapsedSeconds((prev) => {
-          const newElapsed = prev + 1;
+        if (currentIntervalStartRef.current) {
+          const now = Date.now();
+          const actualElapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
+
+          setElapsedSeconds(actualElapsed);
+          elapsedSecondsRef.current = actualElapsed; // Keep ref in sync
 
           // Check if we've reached the target
-          if (newElapsed >= targetSeconds && !isAlarmTriggered) {
+          if (actualElapsed >= targetSeconds && !isAlarmTriggered) {
             setIsAlarmTriggered(true);
             onAlarmTrigger?.();
           }
-
-          return newElapsed;
-        });
+        }
       }, 1000);
 
       return () => {
@@ -158,11 +161,23 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
 
   const pause = useCallback(() => {
     setIsPaused(true);
+    // Store elapsed time at pause to resume from correct position later
+    if (currentIntervalStartRef.current) {
+      const now = Date.now();
+      const elapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
+      setElapsedSeconds(elapsed);
+      elapsedSecondsRef.current = elapsed; // Store in ref for resume
+    }
   }, []);
 
   const resume = useCallback(() => {
+    // Adjust start time to account for paused duration using ref (not stale closure)
+    if (currentIntervalStartRef.current) {
+      const now = Date.now();
+      currentIntervalStartRef.current = now - (elapsedSecondsRef.current * 1000);
+    }
     setIsPaused(false);
-  }, []);
+  }, []); // No dependencies - use ref instead
 
   const switchInterval = useCallback(() => {
     if (!isRunning) return;

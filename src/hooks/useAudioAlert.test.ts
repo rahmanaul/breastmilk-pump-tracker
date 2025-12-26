@@ -162,7 +162,7 @@ describe("useAudioAlert", () => {
         result.current.play();
       });
 
-      expect(navigator.vibrate).toHaveBeenCalledWith([500, 200]);
+      expect(navigator.vibrate).toHaveBeenCalledWith([500, 200, 500, 200, 500, 200]);
     });
   });
 
@@ -182,7 +182,8 @@ describe("useAudioAlert", () => {
 
       expect(result.current.isPlaying).toBe(false);
       expect(mockOscillator.stop).toHaveBeenCalled();
-      expect(mockClose).toHaveBeenCalled();
+      expect(mockOscillator.disconnect).toHaveBeenCalled();
+      // AudioContext is now reused, not closed
     });
 
     it("should stop vibration", () => {

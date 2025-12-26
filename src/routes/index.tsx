@@ -174,6 +174,7 @@ type ScheduleStatusItem = {
   sessionType: "regular" | "power";
   status: "pending" | "in_progress" | "completed" | "late" | "missed";
   session?: {
+    _id: string;
     volume?: number;
     totalPumpDuration?: number;
   };
@@ -313,7 +314,7 @@ const ScheduleCard = memo(function ScheduleCard({
             </div>
           </div>
 
-          {/* Right side - Volume or Start button */}
+          {/* Right side - Volume, Start, or Resume button */}
           {(item.status === "completed" || item.status === "late") &&
           item.session?.volume !== undefined ? (
             <div className="text-right">
@@ -324,6 +325,22 @@ const ScheduleCard = memo(function ScheduleCard({
                 </p>
               )}
             </div>
+          ) : item.status === "in_progress" && item.session ? (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => {
+                void navigate({
+                  to: "/session",
+                  search: {
+                    resume: item.session!._id,
+                  },
+                });
+              }}
+              className="shrink-0 bg-blue-600 hover:bg-blue-700"
+            >
+              Lanjutkan
+            </Button>
           ) : item.status === "pending" || item.status === "missed" ? (
             <Button
               size="sm"

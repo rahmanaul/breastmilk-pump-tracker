@@ -33,16 +33,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
-import { useTimer } from "@/hooks/useTimer";
+import { useTimer, type ResumeState, type TimerInterval } from "@/hooks/useTimer";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 import { Square, RefreshCw, Zap, Clock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Id } from "../../convex/_generated/dataModel";
 
 // Search params type for route
 type SessionSearchParams = {
   scheduleSlotId?: string;
   scheduledTime?: string;
   sessionType?: "regular" | "power";
+  resume?: string; // Session ID to resume
 };
 
 export const Route = createFileRoute("/session")({
@@ -52,6 +54,7 @@ export const Route = createFileRoute("/session")({
       scheduleSlotId: search.scheduleSlotId as string | undefined,
       scheduledTime: search.scheduledTime as string | undefined,
       sessionType: search.sessionType as "regular" | "power" | undefined,
+      resume: search.resume as string | undefined,
     };
   },
 });
@@ -65,11 +68,64 @@ interface TimerConfig {
   pumpCount: number; // number of pump phases (e.g., 2 = pump→rest→pump)
 }
 
+// Helper function to calculate resume state from session intervals
+function calculateResumeState(
+  intervals: Array<{ type: "pump" | "rest"; startTime: number; endTime?: number }>
+): ResumeState {
+  const now = Date.now();
+
+  // Convert intervals to TimerInterval format and find the open one
+  const completedIntervals: TimerInterval[] = [];
+  let currentIntervalType: "pump" | "rest" = "pump";
+  let elapsedInCurrentInterval = 0;
+  let currentPump = 1;
+
+  for (const interval of intervals) {
+    if (interval.endTime) {
+      // Completed interval
+      completedIntervals.push({
+        type: interval.type,
+        startTime: interval.startTime,
+        endTime: interval.endTime,
+        duration: Math.floor((interval.endTime - interval.startTime) / 1000),
+      });
+    } else {
+      // Open interval (current one)
+      currentIntervalType = interval.type;
+      elapsedInCurrentInterval = Math.floor((now - interval.startTime) / 1000);
+    }
+  }
+
+  // Calculate which pump we're on based on completed intervals
+  // Pattern: pump → rest → pump → rest → pump
+  const pumpIntervals = completedIntervals.filter(i => i.type === "pump");
+  if (currentIntervalType === "pump") {
+    currentPump = pumpIntervals.length + 1;
+  } else {
+    // We're in rest, so currentPump is the pump we just finished
+    currentPump = pumpIntervals.length;
+  }
+
+  return {
+    currentIntervalType,
+    elapsedInCurrentInterval,
+    completedIntervals,
+    currentPump: Math.max(1, currentPump),
+  };
+}
+
 function Session() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/session" });
 
   const defaults = useQuery(api.preferences.getDefaults);
+
+  // Query for existing session if resuming
+  const existingSession = useQuery(
+    api.sessions.getById,
+    search.resume ? { sessionId: search.resume as Id<"pumpingSessions"> } : "skip"
+  );
+
   const { mutate: startSession } = useMutationWithRetry(api.sessions.start, {
     errorMessage: "Gagal memulai sesi",
     retryMessage: "Mencoba memulai sesi...",
@@ -100,6 +156,7 @@ function Session() {
   const [isCompleted, setIsCompleted] = useState(true); // tuntas
   const [finalPumpSeconds, setFinalPumpSeconds] = useState(0);
   const [finalRestSeconds, setFinalRestSeconds] = useState(0);
+  const [hasResumed, setHasResumed] = useState(false);
 
   // Schedule info from search params
   const scheduleInfo = search.scheduleSlotId
@@ -123,6 +180,41 @@ function Session() {
       audioAlert.stop();
     },
   });
+
+  // Handle resuming an existing session
+  useEffect(() => {
+    if (search.resume && existingSession && !hasResumed && existingSession.status === "in_progress") {
+      // Set up session state from existing session
+      setSessionId(existingSession._id);
+      setSessionType(existingSession.sessionType);
+
+      // Set timer config from saved config or use defaults
+      const config: TimerConfig = existingSession.timerConfig
+        ? {
+            pumpDuration: existingSession.timerConfig.pumpDuration,
+            restDuration: existingSession.timerConfig.restDuration,
+            pumpCount: existingSession.timerConfig.cycles,
+          }
+        : {
+            pumpDuration: defaults?.pumpDuration ?? 900,
+            restDuration: defaults?.restDuration ?? 300,
+            pumpCount: defaults?.cycles ?? 1,
+          };
+      setTimerConfig(config);
+
+      // Calculate and set resume state
+      const resumeState = calculateResumeState(existingSession.intervals);
+
+      // Go directly to timer phase and resume
+      setPhase("timer");
+      setHasResumed(true);
+
+      // Resume timer with calculated state (slight delay to ensure config is set)
+      setTimeout(() => {
+        timer.resumeFromState(resumeState);
+      }, 100);
+    }
+  }, [search.resume, existingSession, hasResumed, defaults, timer]);
 
   // Stop alarm when dismissed
   useEffect(() => {
@@ -199,10 +291,25 @@ function Session() {
     }
   }, [sessionId, volume, notes, isCompleted, completeSession, navigate]);
 
-  if (!defaults) {
+  // Show loading while fetching defaults or existing session
+  if (!defaults || (search.resume && existingSession === undefined)) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">
+          {search.resume ? "Melanjutkan sesi..." : "Loading..."}
+        </p>
+      </div>
+    );
+  }
+
+  // If trying to resume but session not found or already completed
+  if (search.resume && (!existingSession || existingSession.status !== "in_progress")) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center space-y-4">
+          <p className="text-muted-foreground">Sesi tidak ditemukan atau sudah selesai</p>
+          <Button onClick={() => void navigate({ to: "/" })}>Kembali ke Home</Button>
+        </div>
       </div>
     );
   }

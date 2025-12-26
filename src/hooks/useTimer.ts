@@ -40,10 +40,19 @@ interface UseTimerOptions {
   onAllCyclesComplete?: () => void; // called when all pump phases are done
 }
 
+// State to resume from (calculated from saved session data)
+export interface ResumeState {
+  currentIntervalType: IntervalType;
+  elapsedInCurrentInterval: number; // seconds elapsed in current interval
+  completedIntervals: TimerInterval[];
+  currentPump: number;
+}
+
 interface UseTimerReturn extends TimerState {
   start: () => void;
   pause: () => void;
   resume: () => void;
+  resumeFromState: (state: ResumeState) => void; // Resume from saved state
   switchInterval: () => void;
   stop: () => { intervals: TimerInterval[]; totalPumpSeconds: number; totalRestSeconds: number };
   dismissAlarm: () => void;
@@ -129,6 +138,21 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
     setIsPaused(false);
     setIsAlarmTriggered(false);
     setCurrentPump(1);
+    setIsSessionComplete(false);
+  }, []);
+
+  // Resume from saved state (e.g., when coming back to an in-progress session)
+  const resumeFromState = useCallback((state: ResumeState) => {
+    const now = Date.now();
+    setSessionStartTime(now - state.elapsedInCurrentInterval * 1000);
+    currentIntervalStartRef.current = now - state.elapsedInCurrentInterval * 1000;
+    setCurrentIntervalType(state.currentIntervalType);
+    setElapsedSeconds(state.elapsedInCurrentInterval);
+    setIntervals(state.completedIntervals);
+    setIsRunning(true);
+    setIsPaused(false);
+    setIsAlarmTriggered(false);
+    setCurrentPump(state.currentPump);
     setIsSessionComplete(false);
   }, []);
 
@@ -280,6 +304,7 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
     start,
     pause,
     resume,
+    resumeFromState,
     switchInterval,
     stop,
     dismissAlarm,

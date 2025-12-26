@@ -182,7 +182,8 @@ describe("useAudioAlert", () => {
 
       expect(result.current.isPlaying).toBe(false);
       expect(mockOscillator.stop).toHaveBeenCalled();
-      expect(mockClose).toHaveBeenCalled();
+      expect(mockOscillator.disconnect).toHaveBeenCalled();
+      // AudioContext is now reused, not closed
     });
 
     it("should stop vibration", () => {

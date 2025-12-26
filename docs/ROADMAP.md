@@ -72,17 +72,17 @@ Optimizations for better user experience.
 
 - [x] Implement `React.memo` for schedule cards
 - [x] Add `useMemo` for expensive calculations
-- [ ] Implement virtual scrolling for history (100+ sessions) - Deferred due to React re-render issues
+- [x] Implement virtual scrolling for history (100+ sessions) - Using TanStack Virtual
 - [x] Lazy load charts only when visible
 - [x] Optimize bundle size with tree shaking analysis
 
 ### Offline Support
 
-- [ ] Implement service worker for offline capability
-- [ ] Cache static assets
-- [ ] Queue mutations when offline
-- [ ] Sync when connection restored
-- [ ] Show offline indicator in UI
+- [x] Implement service worker for offline capability (vite-plugin-pwa)
+- [x] Cache static assets (Workbox runtime caching)
+- [x] Queue mutations when offline (IndexedDB-based queue)
+- [x] Sync when connection restored (OfflineContext auto-sync)
+- [x] Show offline indicator in UI (OfflineIndicator component)
 
 ---
 

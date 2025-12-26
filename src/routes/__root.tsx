@@ -7,6 +7,8 @@ import { useEffect } from "react";
 import { Layout } from "@/components/layout";
 import { useScheduleNotifications } from "@/hooks/useScheduleNotifications";
 import { Toaster } from "sonner";
+import { OfflineProvider } from "@/contexts/OfflineContext";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -62,9 +64,12 @@ function AuthenticatedLayout() {
   const hideNavigation = pathname === "/onboarding";
 
   return (
-    <Layout hideNavigation={hideNavigation}>
-      <Outlet />
-    </Layout>
+    <OfflineProvider>
+      <OfflineIndicator />
+      <Layout hideNavigation={hideNavigation}>
+        <Outlet />
+      </Layout>
+    </OfflineProvider>
   );
 }
 

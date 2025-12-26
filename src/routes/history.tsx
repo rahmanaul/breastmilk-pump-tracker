@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo, useCallback, memo } from "react";
+import { useState, useMemo, useCallback, memo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
@@ -17,12 +17,21 @@ import {
 import { Clock, Zap, Trash2, AlertCircle, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HistoryListSkeleton } from "@/components/skeletons";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 export const Route = createFileRoute("/history")({
   component: History,
 });
 
 type DateFilter = "today" | "week" | "month" | "all";
+
+// Threshold for enabling virtual scrolling (to avoid overhead for small lists)
+const VIRTUAL_SCROLL_THRESHOLD = 50;
+
+// Row types for virtualized list
+type VirtualRow =
+  | { type: "date-header"; date: string }
+  | { type: "session"; session: SessionData };
 
 function getDateRange(filter: DateFilter): { start: number; end: number } {
   const now = new Date();
@@ -132,6 +141,21 @@ function History() {
     };
   }, [sessions]);
 
+  // Memoized: Flattened rows for virtualization
+  const virtualRows = useMemo((): VirtualRow[] => {
+    const rows: VirtualRow[] = [];
+    for (const date of sortedDates) {
+      rows.push({ type: "date-header", date });
+      for (const session of groupedSessions[date] || []) {
+        rows.push({ type: "session", session: session as SessionData });
+      }
+    }
+    return rows;
+  }, [sortedDates, groupedSessions]);
+
+  // Determine if we should use virtual scrolling
+  const useVirtualScrolling = totalSessions >= VIRTUAL_SCROLL_THRESHOLD;
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -191,6 +215,14 @@ function History() {
             <p className="text-muted-foreground">Tidak ada sesi</p>
           </CardContent>
         </Card>
+      ) : useVirtualScrolling ? (
+        <VirtualizedSessionList
+          rows={virtualRows}
+          selectedSession={selectedSession}
+          onToggle={handleToggle}
+          onCollapse={handleCollapse}
+          onDelete={handleDelete}
+        />
       ) : (
         <div className="space-y-6">
           {sortedDates.map((date) => (
@@ -237,6 +269,109 @@ type SessionData = {
   isCompleted?: boolean;
   scheduledTime?: number;
 };
+
+// Virtualized session list component for large datasets
+interface VirtualizedSessionListProps {
+  rows: VirtualRow[];
+  selectedSession: string | null;
+  onToggle: (id: string) => void;
+  onCollapse: () => void;
+  onDelete: (id: string) => Promise<void>;
+}
+
+const VirtualizedSessionList = memo(function VirtualizedSessionList({
+  rows,
+  selectedSession,
+  onToggle,
+  onCollapse,
+  onDelete,
+}: VirtualizedSessionListProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  // Dynamic row height estimation
+  const getRowHeight = useCallback(
+    (index: number) => {
+      const row = rows[index];
+      if (row.type === "date-header") {
+        return 40; // Date header height
+      }
+      // Session card: collapsed ~88px, expanded ~400px
+      if (selectedSession === row.session._id) {
+        return 400;
+      }
+      return 88;
+    },
+    [rows, selectedSession]
+  );
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: getRowHeight,
+    overscan: 5,
+    getItemKey: (index) => {
+      const row = rows[index];
+      return row.type === "date-header" ? `date-${row.date}` : row.session._id;
+    },
+  });
+
+  // Re-measure when selection changes
+  useEffect(() => {
+    virtualizer.measure();
+  }, [selectedSession, virtualizer]);
+
+  const virtualItems = virtualizer.getVirtualItems();
+
+  return (
+    <div
+      ref={parentRef}
+      className="h-[calc(100vh-340px)] overflow-auto"
+      style={{ contain: "strict" }}
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualItems.map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              {row.type === "date-header" ? (
+                <h3 className="text-sm font-medium text-muted-foreground py-2 sticky top-0 bg-background z-10">
+                  {format(new Date(row.date), "EEEE, MMMM d, yyyy")}
+                </h3>
+              ) : (
+                <div className="pb-2">
+                  <SessionCard
+                    session={row.session}
+                    isExpanded={selectedSession === row.session._id}
+                    onToggle={onToggle}
+                    onCollapse={onCollapse}
+                    onDelete={onDelete}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 interface SessionCardProps {
   session: SessionData;

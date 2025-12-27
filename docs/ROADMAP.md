@@ -4,15 +4,30 @@ This document outlines the planned improvements and future features for the Brea
 
 ## Current Status
 
-The application is a functional MVP with the following features:
+The application has completed Phases 1-2 and most of Phase 3, with the following features:
+
+### Core Features
 - User authentication (sign up/sign in)
 - Onboarding wizard with default schedule setup
-- Session timer with pump/rest intervals
+- Session timer with pump/rest intervals (with pause/resume)
 - Regular and Power pumping session types
-- Session history with filtering
-- Statistics with charts
+- Custom interval patterns for flexible pumping sessions
+- Session history with filtering and virtual scrolling
+- Statistics with charts and schedule adherence tracking
 - Configurable settings and schedules
 - Audio alerts with persistent alarm
+
+### Data & Export
+- Export to CSV and PDF
+- Weekly/monthly summary reports
+- Share reports with healthcare providers
+- Print-friendly history view
+
+### Reliability
+- Comprehensive test coverage (unit, integration, E2E)
+- Offline support with service worker
+- Automatic session resume
+- Error handling with retry mechanisms
 
 ---
 
@@ -98,12 +113,14 @@ New functionality to improve user experience.
 - [x] Share reports with healthcare providers
 - [x] Print-friendly history view
 
-### Push Notifications
+### Schedule & Notifications
 
-- [ ] Implement web push notifications
-- [ ] Schedule reminder notifications
-- [ ] "Time to pump" reminders based on schedule
-- [ ] Configurable notification preferences
+- [x] Schedule reminder notifications (browser Notification API)
+- [x] "Time to pump" reminders based on schedule
+- [x] Configurable notification preferences in settings
+- [x] Session resume capability (resume in-progress sessions)
+- [x] Schedule adherence tracking and statistics
+- [ ] Web push notifications (service worker-based)
 - [ ] Notification sound options
 
 ### UI/UX Improvements
@@ -117,10 +134,11 @@ New functionality to improve user experience.
 
 ### Timer Enhancements
 
-- [ ] Pause/resume functionality
-- [ ] Background timer with notifications
+- [x] Pause/resume functionality
+- [x] Custom interval patterns (IntervalBuilder component)
+- [x] Session resume from in-progress state
+- [ ] Background timer with persistent notifications
 - [ ] Picture-in-picture mode for timer
-- [ ] Custom interval patterns
 - [ ] Quick start from dashboard
 
 ---
@@ -225,16 +243,16 @@ Ongoing improvements to code quality.
 
 ## Versioning Plan
 
-| Version | Focus | Key Deliverables |
-|---------|-------|------------------|
-| 1.1 | Quality | Testing infrastructure, error handling |
-| 1.2 | Performance | Backend optimizations, pagination |
-| 1.3 | Offline | Service worker, offline support |
-| 2.0 | Export | Data export, push notifications |
-| 2.1 | UI/UX | Dark mode, mobile improvements |
-| 3.0 | Analytics | Insights, trends, recommendations |
-| 3.1 | Multi-device | Real-time sync, desktop app |
-| 4.0 | Healthcare | Health app integration |
+| Version | Focus | Key Deliverables | Status |
+|---------|-------|------------------|--------|
+| 1.1 | Quality | Testing infrastructure, error handling | ✅ Complete |
+| 1.2 | Performance | Backend optimizations, pagination | ✅ Complete |
+| 1.3 | Offline | Service worker, offline support | ✅ Complete |
+| 2.0 | Export | Data export, schedule notifications | ✅ Complete |
+| 2.1 | UI/UX | Dark mode, mobile improvements | 🔲 Planned |
+| 3.0 | Analytics | Insights, trends, recommendations | 🔲 Planned |
+| 3.1 | Multi-device | Real-time sync, desktop app | 🔲 Planned |
+| 4.0 | Healthcare | Health app integration | 🔲 Planned |
 
 ---
 
@@ -256,4 +274,4 @@ Have suggestions for the roadmap? Please open an issue with the `enhancement` la
 
 ---
 
-*Last updated: December 2025*
+*Last updated: December 27, 2025*

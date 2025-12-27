@@ -2,6 +2,13 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
+// Adherence status type for tracking schedule compliance
+const adherenceStatusValidator = v.union(
+  v.literal("on_time"), // latenessMinutes === 0 or <= threshold
+  v.literal("late"), // latenessMinutes > threshold
+  v.literal("missed") // scheduled slot with no session
+);
+
 // Get daily stats for the last N days
 export const getDailyStats = query({
   args: {
@@ -260,6 +267,280 @@ export const getSummary = query({
             ? Math.round(powerVolume / powerSessions.length)
             : 0,
       },
+    };
+  },
+});
+
+// Adherence detail item for detailed breakdown
+const adherenceDetailValidator = v.object({
+  date: v.string(), // YYYY-MM-DD
+  scheduledTime: v.string(), // HH:mm
+  scheduledTimestamp: v.number(), // timestamp ms
+  status: adherenceStatusValidator,
+  latenessMinutes: v.optional(v.number()),
+  sessionId: v.optional(v.id("pumpingSessions")),
+});
+
+// Get adherence stats for schedule compliance tracking
+// Tracks: on-time, late, and missed sessions
+export const getAdherenceStats = query({
+  args: {
+    days: v.number(), // Number of days to analyze
+    lateThresholdMinutes: v.optional(v.number()), // Minutes after which a session is "late" (default: 15)
+    clientTimezoneOffset: v.optional(v.number()), // Client timezone offset in minutes (for accurate day boundaries)
+  },
+  returns: v.object({
+    // Summary counts
+    onTime: v.number(),
+    late: v.number(),
+    missed: v.number(),
+    total: v.number(), // Total scheduled slots in the period
+
+    // Rates and averages
+    adherenceRate: v.number(), // Percentage of completed sessions (on_time + late) / total * 100
+    onTimeRate: v.number(), // Percentage of on-time sessions / total * 100
+    avgLatenessMinutes: v.number(), // Average lateness for late sessions
+
+    // Daily breakdown
+    dailyStats: v.array(
+      v.object({
+        date: v.string(), // YYYY-MM-DD
+        onTime: v.number(),
+        late: v.number(),
+        missed: v.number(),
+        scheduled: v.number(), // Total scheduled for that day
+      })
+    ),
+
+    // Detailed items (optional, for detailed view)
+    details: v.array(adherenceDetailValidator),
+  }),
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return {
+        onTime: 0,
+        late: 0,
+        missed: 0,
+        total: 0,
+        adherenceRate: 0,
+        onTimeRate: 0,
+        avgLatenessMinutes: 0,
+        dailyStats: [],
+        details: [],
+      };
+    }
+
+    const lateThreshold = args.lateThresholdMinutes ?? 15;
+    const timezoneOffset = args.clientTimezoneOffset ?? 0;
+
+    // Get user preferences to access schedule
+    const preferences = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+
+    // If no schedule configured, return empty stats
+    if (!preferences?.sessionSchedule || preferences.sessionSchedule.length === 0) {
+      return {
+        onTime: 0,
+        late: 0,
+        missed: 0,
+        total: 0,
+        adherenceRate: 0,
+        onTimeRate: 0,
+        avgLatenessMinutes: 0,
+        dailyStats: [],
+        details: [],
+      };
+    }
+
+    // Calculate date range
+    const now = new Date();
+    // Adjust for client timezone
+    const clientNow = new Date(now.getTime() - timezoneOffset * 60 * 1000);
+
+    // Start of today in client timezone
+    const startOfToday = new Date(
+      clientNow.getFullYear(),
+      clientNow.getMonth(),
+      clientNow.getDate()
+    );
+
+    // Start date (args.days ago)
+    const startDate = new Date(startOfToday);
+    startDate.setDate(startDate.getDate() - args.days + 1);
+
+    // Get all sessions in the date range
+    const sessions = await ctx.db
+      .query("pumpingSessions")
+      .withIndex("by_user_and_time", (q) =>
+        q.eq("userId", userId).gte("startTime", startDate.getTime())
+      )
+      .collect();
+
+    const completedSessions = sessions.filter((s) => s.status === "completed");
+
+    // Build a map of schedule slot ID -> sessions for that slot
+    const sessionsBySlot = new Map<string, typeof completedSessions>();
+    const sessionsByScheduledTime = new Map<number, typeof completedSessions[0]>();
+
+    for (const session of completedSessions) {
+      if (session.scheduleSlotId) {
+        const existing = sessionsBySlot.get(session.scheduleSlotId) || [];
+        existing.push(session);
+        sessionsBySlot.set(session.scheduleSlotId, existing);
+      }
+      if (session.scheduledTime) {
+        sessionsByScheduledTime.set(session.scheduledTime, session);
+      }
+    }
+
+    // Generate expected schedule slots for each day in the range
+    const enabledSlots = preferences.sessionSchedule.filter((slot) => slot.enabled);
+
+    let totalOnTime = 0;
+    let totalLate = 0;
+    let totalMissed = 0;
+    let totalLateness = 0;
+    let lateCount = 0;
+
+    const dailyStatsMap = new Map<
+      string,
+      { onTime: number; late: number; missed: number; scheduled: number }
+    >();
+    const details: Array<{
+      date: string;
+      scheduledTime: string;
+      scheduledTimestamp: number;
+      status: "on_time" | "late" | "missed";
+      latenessMinutes?: number;
+      sessionId?: typeof completedSessions[0]["_id"];
+    }> = [];
+
+    // Iterate through each day in the range
+    for (let dayOffset = 0; dayOffset < args.days; dayOffset++) {
+      const currentDate = new Date(startDate);
+      currentDate.setDate(currentDate.getDate() + dayOffset);
+      const dateStr = currentDate.toISOString().split("T")[0];
+
+      // Initialize daily stats
+      if (!dailyStatsMap.has(dateStr)) {
+        dailyStatsMap.set(dateStr, { onTime: 0, late: 0, missed: 0, scheduled: 0 });
+      }
+      const dayStats = dailyStatsMap.get(dateStr)!;
+
+      // For each enabled schedule slot
+      for (const slot of enabledSlots) {
+        const [hours, minutes] = slot.time.split(":").map(Number);
+        const scheduledTimestamp =
+          currentDate.getTime() + (hours * 60 + minutes) * 60 * 1000;
+
+        // Skip future slots
+        if (scheduledTimestamp > now.getTime()) {
+          continue;
+        }
+
+        dayStats.scheduled++;
+
+        // Find matching session for this slot on this day
+        // Try by scheduleSlotId first
+        let matchingSession: typeof completedSessions[0] | undefined;
+
+        if (slot.id) {
+          const slotSessions = sessionsBySlot.get(slot.id) || [];
+          matchingSession = slotSessions.find((s) => {
+            const sessionDate = new Date(s.startTime).toISOString().split("T")[0];
+            return sessionDate === dateStr;
+          });
+        }
+
+        // Fallback: match by scheduledTime proximity
+        if (!matchingSession) {
+          matchingSession = sessionsByScheduledTime.get(scheduledTimestamp);
+        }
+
+        // Fallback: match by startTime proximity (within 2 hours of scheduled time)
+        if (!matchingSession) {
+          matchingSession = completedSessions.find((s) => {
+            const sessionDate = new Date(s.startTime).toISOString().split("T")[0];
+            if (sessionDate !== dateStr) return false;
+
+            const timeDiff = Math.abs(s.startTime - scheduledTimestamp);
+            return timeDiff < 2 * 60 * 60 * 1000; // Within 2 hours
+          });
+        }
+
+        let status: "on_time" | "late" | "missed";
+        let latenessMinutes: number | undefined;
+
+        if (matchingSession) {
+          // Determine if on-time or late
+          latenessMinutes = matchingSession.latenessMinutes;
+
+          if (latenessMinutes === undefined || latenessMinutes === null) {
+            // Calculate lateness from startTime
+            const diffMs = matchingSession.startTime - scheduledTimestamp;
+            latenessMinutes = Math.max(0, Math.floor(diffMs / 60000));
+          }
+
+          if (latenessMinutes <= lateThreshold) {
+            status = "on_time";
+            totalOnTime++;
+            dayStats.onTime++;
+          } else {
+            status = "late";
+            totalLate++;
+            dayStats.late++;
+            totalLateness += latenessMinutes;
+            lateCount++;
+          }
+
+          details.push({
+            date: dateStr,
+            scheduledTime: slot.time,
+            scheduledTimestamp,
+            status,
+            latenessMinutes,
+            sessionId: matchingSession._id,
+          });
+        } else {
+          // No session found - check if past grace period (30 minutes)
+          const gracePeriodMs = 30 * 60 * 1000;
+          if (now.getTime() > scheduledTimestamp + gracePeriodMs) {
+            status = "missed";
+            totalMissed++;
+            dayStats.missed++;
+
+            details.push({
+              date: dateStr,
+              scheduledTime: slot.time,
+              scheduledTimestamp,
+              status,
+            });
+          }
+        }
+      }
+    }
+
+    const total = totalOnTime + totalLate + totalMissed;
+    const completedCount = totalOnTime + totalLate;
+
+    return {
+      onTime: totalOnTime,
+      late: totalLate,
+      missed: totalMissed,
+      total,
+      adherenceRate: total > 0 ? Math.round((completedCount / total) * 100) : 0,
+      onTimeRate: total > 0 ? Math.round((totalOnTime / total) * 100) : 0,
+      avgLatenessMinutes: lateCount > 0 ? Math.round(totalLateness / lateCount) : 0,
+      dailyStats: Array.from(dailyStatsMap.entries())
+        .map(([date, stats]) => ({
+          date,
+          ...stats,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      details: details.sort((a, b) => a.scheduledTimestamp - b.scheduledTimestamp),
     };
   },
 });

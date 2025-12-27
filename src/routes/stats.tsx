@@ -25,6 +25,7 @@ import { Trophy, TrendingUp, Droplets, Calendar, Clock, Zap, Download } from "lu
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInView } from "react-intersection-observer";
 import { StatsExportDialog } from "@/components/StatsExportDialog";
+import { AdherenceStats } from "@/components/AdherenceStats";
 import type { DailyStatsExport, SummaryStatsExport } from "@/lib/export";
 
 export const Route = createFileRoute("/stats")({
@@ -157,6 +158,9 @@ function Stats() {
           </Button>
         ))}
       </div>
+
+      {/* Adherence Stats */}
+      <AdherenceStats days={timeRange} />
 
       {/* Summary Cards */}
       {summary && (

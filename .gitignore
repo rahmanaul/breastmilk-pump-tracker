@@ -31,3 +31,6 @@ dist-ssr
 /playwright/.cache/
 /playwright/.auth/
 /e2e/.auth/
+
+# Test coverage
+/coverage/

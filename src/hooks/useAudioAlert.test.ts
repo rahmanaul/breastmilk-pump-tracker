@@ -43,9 +43,11 @@ describe("useAudioAlert", () => {
     // Use a proper class for the mock
     class MockAudioContext {
       destination = {};
+      state = "running"; // Audio context is ready to play
       createOscillator = vi.fn(() => mockOscillator);
       createGain = vi.fn(() => mockGainNode);
       close = mockClose;
+      resume = vi.fn(() => Promise.resolve());
     }
 
     // @ts-expect-error - mocking AudioContext
@@ -67,70 +69,70 @@ describe("useAudioAlert", () => {
   });
 
   describe("play", () => {
-    it("should start playing audio", () => {
+    it("should start playing audio", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       expect(result.current.isPlaying).toBe(true);
       expect(mockOscillator.start).toHaveBeenCalled();
     });
 
-    it("should set oscillator to square wave at 800Hz", () => {
+    it("should set oscillator to square wave at 800Hz", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       expect(mockOscillator.type).toBe("square");
       expect(mockOscillator.frequency.value).toBe(800);
     });
 
-    it("should set gain to 0.5", () => {
+    it("should set gain to 0.5", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       expect(mockGainNode.gain.value).toBe(0.5);
     });
 
-    it("should connect oscillator to gain", () => {
+    it("should connect oscillator to gain", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       expect(mockOscillator.connect).toHaveBeenCalledWith(mockGainNode);
     });
 
-    it("should not play if already playing", () => {
+    it("should not play if already playing", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       const startCallCount = mockOscillator.start.mock.calls.length;
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       // Should not have called start again
       expect(mockOscillator.start).toHaveBeenCalledTimes(startCallCount);
     });
 
-    it("should pulse frequency between 800 and 600", () => {
+    it("should pulse frequency between 800 and 600", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       // Initial frequency is 800
@@ -155,11 +157,11 @@ describe("useAudioAlert", () => {
       expect(mockOscillator.frequency.value).toBe(800);
     });
 
-    it("should trigger vibration on mobile", () => {
+    it("should trigger vibration on mobile", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       expect(navigator.vibrate).toHaveBeenCalledWith([500, 200, 500, 200, 500, 200]);
@@ -167,11 +169,11 @@ describe("useAudioAlert", () => {
   });
 
   describe("stop", () => {
-    it("should stop playing audio", () => {
+    it("should stop playing audio", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       expect(result.current.isPlaying).toBe(true);
@@ -186,11 +188,11 @@ describe("useAudioAlert", () => {
       // AudioContext is now reused, not closed
     });
 
-    it("should stop vibration", () => {
+    it("should stop vibration", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       act(() => {
@@ -200,11 +202,11 @@ describe("useAudioAlert", () => {
       expect(navigator.vibrate).toHaveBeenLastCalledWith(0);
     });
 
-    it("should stop pulsing interval", () => {
+    it("should stop pulsing interval", async () => {
       const { result } = renderHook(() => useAudioAlert());
 
-      act(() => {
-        result.current.play();
+      await act(async () => {
+        await result.current.play();
       });
 
       act(() => {

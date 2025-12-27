@@ -412,6 +412,8 @@ function Session() {
               currentPump={timer.currentPump}
               totalPumps={timer.totalPumps}
               onDismiss={() => void handleSwitchInterval()}
+              isPending={audioAlert.isPending}
+              onActivateAudio={() => void audioAlert.retryPlay()}
             />
           )}
 
@@ -848,11 +850,15 @@ function AlarmOverlay({
   currentPump,
   totalPumps,
   onDismiss,
+  isPending,
+  onActivateAudio,
 }: {
   intervalType: "pump" | "rest";
   currentPump: number;
   totalPumps: number;
   onDismiss: () => void;
+  isPending?: boolean;
+  onActivateAudio?: () => void;
 }) {
   const isLastPump = currentPump === totalPumps;
 
@@ -867,8 +873,18 @@ function AlarmOverlay({
     return intervalType === "pump" ? "Mulai Istirahat" : "Mulai Pump";
   };
 
+  // Handle tap - if audio is pending, activate it first
+  const handleTap = () => {
+    if (isPending && onActivateAudio) {
+      onActivateAudio();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-destructive/95 flex items-center justify-center animate-pulse">
+    <div
+      className="fixed inset-0 z-50 bg-destructive/95 flex items-center justify-center animate-pulse"
+      onClick={handleTap}
+    >
       <div className="text-center space-y-6">
         <div className="text-white">
           <p className="text-2xl font-bold uppercase tracking-wide">
@@ -880,6 +896,12 @@ function AlarmOverlay({
           <p className="text-sm mt-1 opacity-60">
             Pump {currentPump} dari {totalPumps}
           </p>
+          {/* Show hint if audio is pending (blocked by autoplay) */}
+          {isPending && (
+            <p className="text-sm mt-4 opacity-90 bg-white/20 rounded-lg px-4 py-2">
+              Tap layar untuk mengaktifkan alarm
+            </p>
+          )}
         </div>
 
         <Button

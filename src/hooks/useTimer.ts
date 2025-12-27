@@ -175,26 +175,46 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
     .reduce((sum, i) => sum + i.duration, 0) +
     (isRunning && currentIntervalType === "rest" ? elapsedSeconds : 0);
 
+  // Immediate time sync function - calculates and updates elapsed time from startTime
+  const syncTime = useCallback(() => {
+    if (!currentIntervalStartRef.current) return;
+
+    const now = Date.now();
+    const actualElapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
+
+    setElapsedSeconds(actualElapsed);
+    elapsedSecondsRef.current = actualElapsed;
+
+    // Get current target from ref (stable reference)
+    const currentConfig = configuredIntervalsRef.current[currentIntervalIndex];
+    const currentTarget = currentConfig?.duration ?? 0;
+
+    if (actualElapsed >= currentTarget && !isAlarmTriggered) {
+      setIsAlarmTriggered(true);
+      onAlarmTrigger?.();
+    }
+  }, [currentIntervalIndex, isAlarmTriggered, onAlarmTrigger]);
+
+  // Handle visibility change - sync time when tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isRunning && !isPaused && !isSessionComplete) {
+        // Immediately sync time when returning to app
+        syncTime();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isRunning, isPaused, isSessionComplete, syncTime]);
+
   // Timer tick effect
   useEffect(() => {
     if (isRunning && !isPaused && !isAlarmTriggered && !isSessionComplete) {
+      // Don't call syncTime() immediately here - it causes alarm to re-trigger after dismiss
+      // Time sync happens via: 1) setInterval every second, 2) visibility change handler
       intervalRef.current = window.setInterval(() => {
-        if (currentIntervalStartRef.current) {
-          const now = Date.now();
-          const actualElapsed = Math.floor((now - currentIntervalStartRef.current) / 1000);
-
-          setElapsedSeconds(actualElapsed);
-          elapsedSecondsRef.current = actualElapsed;
-
-          // Get current target from ref (stable reference)
-          const currentConfig = configuredIntervalsRef.current[currentIntervalIndex];
-          const currentTarget = currentConfig?.duration ?? 0;
-
-          if (actualElapsed >= currentTarget && !isAlarmTriggered) {
-            setIsAlarmTriggered(true);
-            onAlarmTrigger?.();
-          }
-        }
+        syncTime();
       }, 1000);
 
       return () => {
@@ -203,7 +223,7 @@ export function useTimer(options: UseTimerOptions): UseTimerReturn {
         }
       };
     }
-  }, [isRunning, isPaused, isAlarmTriggered, isSessionComplete, currentIntervalIndex, onAlarmTrigger]);
+  }, [isRunning, isPaused, isAlarmTriggered, isSessionComplete, syncTime]);
 
   const start = useCallback(() => {
     const now = Date.now();

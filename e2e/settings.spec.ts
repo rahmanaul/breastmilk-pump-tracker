@@ -42,8 +42,8 @@ test.describe('Settings', () => {
     // Should show alarm card
     await expect(page.getByText(/^alarm$/i)).toBeVisible();
 
-    // Should show volume slider
-    await expect(page.getByText(/volume/i)).toBeVisible();
+    // Should show volume label (use exact match to avoid multiple matches)
+    await expect(page.getByText('Volume', { exact: true })).toBeVisible();
 
     // Should have test alarm button
     await expect(page.getByRole('button', { name: /test alarm/i })).toBeVisible();
@@ -73,16 +73,22 @@ test.describe('Settings', () => {
       timeout: 10000,
     });
 
-    // Find pump duration select
-    const pumpDurationRow = page.locator('div').filter({ hasText: /durasi pump/i }).first();
-    const select = pumpDurationRow.locator('[role="combobox"]');
+    // Find pump duration select - use label to find the specific combobox
+    const pumpDurationLabel = page.getByText('Durasi Pump', { exact: true });
+    await expect(pumpDurationLabel).toBeVisible();
 
-    if (await select.isVisible()) {
-      await select.click();
+    // Get the first combobox in the timer defaults section
+    const timerDefaultsCard = page.locator('[data-slot="card"]').filter({ hasText: /timer default/i });
+    const selects = timerDefaultsCard.locator('[role="combobox"]');
+
+    // First combobox should be pump duration
+    const pumpSelect = selects.first();
+    if (await pumpSelect.isVisible()) {
+      await pumpSelect.click();
       await page.getByRole('option', { name: '20 menit' }).click();
 
       // Verify selection
-      await expect(select).toContainText('20');
+      await expect(pumpSelect).toContainText('20');
     }
   });
 

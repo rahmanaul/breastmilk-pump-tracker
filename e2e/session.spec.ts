@@ -67,7 +67,8 @@ test.describe('Session', () => {
 
     // Should show estimated time
     await expect(page.getByText(/estimasi total/i)).toBeVisible();
-    await expect(page.getByText(/menit$/i)).toBeVisible();
+    // Look for text containing "menit" anywhere
+    await expect(page.getByText(/\d+\s*menit/i).first()).toBeVisible();
   });
 
   test('should start timer when clicking start button', async ({ page }) => {

@@ -11,18 +11,23 @@ const NOTIFICATION_AUTO_CLOSE_TIMEOUT = 30000; // ms
 
 interface AudioAlertState {
   isPlaying: boolean;
+  isPending: boolean; // Alarm should play but blocked by autoplay policy
   play: (message?: string) => Promise<void>;
   stop: () => void;
   requestPermissions: () => Promise<boolean>;
+  retryPlay: () => Promise<void>; // Retry playing when user interacts
 }
 
 export function useAudioAlert(): AudioAlertState {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPending, setIsPending] = useState(false); // Alarm pending due to autoplay block
   const audioContextRef = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
   const intervalRef = useRef<number | null>(null);
   const vibrateIntervalRef = useRef<number | null>(null);
   const isPlayingRef = useRef(false); // Synchronous check to prevent race conditions
+  const isPendingRef = useRef(false); // Synchronous check for pending state
+  const pendingMessageRef = useRef<string>(""); // Store message for retry
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const notificationRef = useRef<Notification | null>(null);
   const notificationTimeoutRef = useRef<number | null>(null);
@@ -60,10 +65,75 @@ export function useAudioAlert(): AudioAlertState {
     return Notification.permission === "granted";
   }, []);
 
+  // Internal function to actually start the audio
+  const startAudio = useCallback(async () => {
+    try {
+      // Reuse or create audio context (browsers limit to 6-8 instances)
+      if (!audioContextRef.current) {
+        const AudioContextClass =
+          window.AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass();
+      }
+      const audioContext = audioContextRef.current;
+
+      // CRITICAL: Resume AudioContext if suspended (autoplay policy)
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+
+      // If still suspended after resume attempt, audio is blocked
+      if (audioContext.state === "suspended") {
+        console.warn("AudioContext still suspended - autoplay blocked");
+        return false;
+      }
+
+      // Create oscillator for alarm sound
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Loud, attention-grabbing alarm
+      oscillator.frequency.value = ALARM_FREQUENCY_HIGH;
+      oscillator.type = "square";
+      gainNode.gain.value = ALARM_GAIN;
+
+      oscillator.start();
+      oscillatorRef.current = oscillator;
+
+      // Create pulsing effect by modulating frequency
+      let high = true;
+      intervalRef.current = window.setInterval(() => {
+        if (oscillatorRef.current) {
+          oscillatorRef.current.frequency.value = high ? ALARM_FREQUENCY_HIGH : ALARM_FREQUENCY_LOW;
+          high = !high;
+        }
+      }, ALARM_PULSE_INTERVAL);
+
+      // Try to trigger vibration on mobile (continuous pattern)
+      if ("vibrate" in navigator) {
+        const vibratePattern = () => {
+          navigator.vibrate(VIBRATE_PATTERN);
+        };
+        vibratePattern();
+        // Continue vibrating at intervals
+        vibrateIntervalRef.current = window.setInterval(vibratePattern, VIBRATE_REPEAT_INTERVAL);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Failed to start audio:", error);
+      return false;
+    }
+  }, []);
+
   const play = useCallback(async (message = "Waktu habis! Saatnya berganti interval.") => {
     // Use ref for immediate synchronous check to prevent race conditions
     if (isPlayingRef.current) return;
-    isPlayingRef.current = true;
+
+    // Store message for potential retry
+    pendingMessageRef.current = message;
 
     try {
       // Request wake lock to prevent screen from sleeping
@@ -103,54 +173,41 @@ export function useAudioAlert(): AudioAlertState {
         }, NOTIFICATION_AUTO_CLOSE_TIMEOUT);
       }
 
-      // Reuse or create audio context (browsers limit to 6-8 instances)
-      if (!audioContextRef.current) {
-        const AudioContextClass =
-          window.AudioContext || (window as any).webkitAudioContext;
-        audioContextRef.current = new AudioContextClass();
-      }
-      const audioContext = audioContextRef.current;
+      // Try to start audio
+      const audioStarted = await startAudio();
 
-      // Create oscillator for alarm sound
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      // Loud, attention-grabbing alarm
-      oscillator.frequency.value = ALARM_FREQUENCY_HIGH;
-      oscillator.type = "square";
-      gainNode.gain.value = ALARM_GAIN;
-
-      oscillator.start();
-      oscillatorRef.current = oscillator;
-
-      // Create pulsing effect by modulating frequency
-      let high = true;
-      intervalRef.current = window.setInterval(() => {
-        if (oscillatorRef.current) {
-          oscillatorRef.current.frequency.value = high ? ALARM_FREQUENCY_HIGH : ALARM_FREQUENCY_LOW;
-          high = !high;
-        }
-      }, ALARM_PULSE_INTERVAL);
-
-      setIsPlaying(true);
-
-      // Try to trigger vibration on mobile (continuous pattern)
-      if ("vibrate" in navigator) {
-        const vibratePattern = () => {
-          navigator.vibrate(VIBRATE_PATTERN);
-        };
-        vibratePattern();
-        // Continue vibrating at intervals
-        vibrateIntervalRef.current = window.setInterval(vibratePattern, VIBRATE_REPEAT_INTERVAL);
+      if (audioStarted) {
+        isPlayingRef.current = true;
+        isPendingRef.current = false;
+        setIsPlaying(true);
+        setIsPending(false);
+      } else {
+        // Audio blocked by autoplay policy - set pending state
+        console.warn("Audio blocked by autoplay policy - user interaction required");
+        isPendingRef.current = true;
+        setIsPending(true);
       }
     } catch (error) {
       console.error("Failed to play alarm:", error);
-      isPlayingRef.current = false; // Reset ref on error
+      // Set pending so user knows something is wrong
+      isPendingRef.current = true;
+      setIsPending(true);
     }
-  }, []);
+  }, [startAudio]);
+
+  // Retry playing audio - call this on user interaction when isPending is true
+  const retryPlay = useCallback(async () => {
+    if (!isPendingRef.current || isPlayingRef.current) return;
+
+    const audioStarted = await startAudio();
+
+    if (audioStarted) {
+      isPlayingRef.current = true;
+      isPendingRef.current = false;
+      setIsPlaying(true);
+      setIsPending(false);
+    }
+  }, [startAudio]);
 
   const stop = useCallback(() => {
     if (oscillatorRef.current) {
@@ -201,8 +258,10 @@ export function useAudioAlert(): AudioAlertState {
     }
 
     isPlayingRef.current = false; // Reset ref synchronously
+    isPendingRef.current = false; // Reset pending ref too
     setIsPlaying(false);
+    setIsPending(false);
   }, []);
 
-  return { isPlaying, play, stop, requestPermissions };
+  return { isPlaying, isPending, play, stop, requestPermissions, retryPlay };
 }

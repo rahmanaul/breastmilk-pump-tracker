@@ -5,6 +5,8 @@ import { api } from "../../convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { toast } from "sonner";
 import { useMutationWithRetry } from "@/hooks/useMutationWithRetry";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useAudioAlert, type AlertSoundType } from "@/hooks/useAudioAlert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +37,12 @@ import {
   Minus,
   Clock,
   Zap,
+  Sun,
+  Moon,
+  Monitor,
+  Palette,
+  Music,
+  Play,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -71,6 +79,7 @@ function normalizeTime(time: string): string {
 
 function Settings() {
   const { signOut } = useAuthActions();
+  const { theme, colorScheme, setTheme, setColorScheme } = useTheme();
   const preferences = useQuery(api.preferences.get);
   const defaults = useQuery(api.preferences.getDefaults);
   const { mutate: savePreferences, state: saveState } = useMutationWithRetry(
@@ -86,7 +95,11 @@ function Settings() {
   const [restMinutes, setRestMinutes] = useState(5);
   const [pumpCount, setPumpCount] = useState(2); // How many pump phases
   const [alertVolume, setAlertVolume] = useState(100);
+  const [alertSound, setAlertSound] = useState<AlertSoundType>("beep");
   const [saved, setSaved] = useState(false);
+
+  // Audio alert hook for sound preview
+  const audioAlert = useAudioAlert(alertSound);
 
   // Session schedule state with sessionType
   const [sessionSchedule, setSessionSchedule] = useState<ScheduleItem[]>([
@@ -112,6 +125,7 @@ function Settings() {
   useEffect(() => {
     if (preferences) {
       setAlertVolume(preferences.alertVolume);
+      setAlertSound(preferences.alertSound ?? "beep");
       setNotificationsEnabled(preferences.notificationsEnabled ?? false);
 
       // Load schedule with sessionType
@@ -157,6 +171,7 @@ function Settings() {
       defaultRestDuration: restMinutes * 60,
       defaultCycles: pumpCount, // Backend stores as cycles
       alertVolume,
+      alertSound,
       sessionSchedule,
       notificationsEnabled,
     });
@@ -322,7 +337,7 @@ function Settings() {
             <Volume2 className="h-5 w-5" />
             Alarm
           </CardTitle>
-          <CardDescription>Atur volume alarm</CardDescription>
+          <CardDescription>Atur volume dan jenis alarm</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -339,7 +354,124 @@ function Settings() {
               className="w-full"
             />
           </div>
-          <AlarmTestButton volume={alertVolume} />
+
+          {/* Sound Options */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Music className="h-4 w-4" />
+              Jenis Suara
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["beep", "chime", "bell", "gentle"] as const).map((sound) => (
+                <Button
+                  key={sound}
+                  variant={alertSound === sound ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setAlertSound(sound);
+                    audioAlert.previewSound(sound);
+                  }}
+                  className="flex items-center justify-between"
+                >
+                  <span className="capitalize">
+                    {sound === "beep" ? "Beep" : sound === "chime" ? "Chime" : sound === "bell" ? "Bell" : "Gentle"}
+                  </span>
+                  <Play className="h-3 w-3 ml-2" />
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Klik untuk mendengar preview suara
+            </p>
+          </div>
+
+          <AlarmTestButton volume={alertVolume} soundType={alertSound} />
+        </CardContent>
+      </Card>
+
+      {/* Theme Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sun className="h-5 w-5" />
+            Tampilan
+          </CardTitle>
+          <CardDescription>Atur tema dan warna aplikasi</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Theme Mode */}
+          <div className="space-y-2">
+            <Label>Mode Tema</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                variant={theme === "light" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTheme("light")}
+                className="flex items-center gap-2"
+              >
+                <Sun className="h-4 w-4" />
+                Terang
+              </Button>
+              <Button
+                variant={theme === "dark" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTheme("dark")}
+                className="flex items-center gap-2"
+              >
+                <Moon className="h-4 w-4" />
+                Gelap
+              </Button>
+              <Button
+                variant={theme === "system" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTheme("system")}
+                className="flex items-center gap-2"
+              >
+                <Monitor className="h-4 w-4" />
+                Sistem
+              </Button>
+            </div>
+          </div>
+
+          {/* Color Scheme */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Palette className="h-4 w-4" />
+              Skema Warna
+            </Label>
+            <div className="grid grid-cols-5 gap-2">
+              {(["default", "rose", "blue", "green", "orange"] as const).map((scheme) => (
+                <button
+                  key={scheme}
+                  onClick={() => setColorScheme(scheme)}
+                  className={cn(
+                    "h-10 w-full rounded-md border-2 transition-all",
+                    colorScheme === scheme
+                      ? "border-primary ring-2 ring-primary ring-offset-2"
+                      : "border-muted hover:border-primary/50"
+                  )}
+                  style={{
+                    background:
+                      scheme === "default"
+                        ? "linear-gradient(135deg, oklch(0.205 0 0), oklch(0.556 0 0))"
+                        : scheme === "rose"
+                          ? "linear-gradient(135deg, oklch(0.55 0.2 350), oklch(0.75 0.15 350))"
+                          : scheme === "blue"
+                            ? "linear-gradient(135deg, oklch(0.55 0.2 250), oklch(0.75 0.15 250))"
+                            : scheme === "green"
+                              ? "linear-gradient(135deg, oklch(0.55 0.2 150), oklch(0.75 0.15 150))"
+                              : "linear-gradient(135deg, oklch(0.65 0.2 50), oklch(0.75 0.15 50))",
+                  }}
+                  title={scheme.charAt(0).toUpperCase() + scheme.slice(1)}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              {colorScheme === "default"
+                ? "Default"
+                : colorScheme.charAt(0).toUpperCase() + colorScheme.slice(1)}
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -525,7 +657,15 @@ function Settings() {
   );
 }
 
-function AlarmTestButton({ volume }: { volume: number }) {
+// Sound configurations for test button
+const SOUND_CONFIGS: Record<AlertSoundType, { frequencyHigh: number; gain: number; waveType: OscillatorType }> = {
+  beep: { frequencyHigh: 800, gain: 0.5, waveType: "square" },
+  chime: { frequencyHigh: 1200, gain: 0.4, waveType: "sine" },
+  bell: { frequencyHigh: 523, gain: 0.5, waveType: "triangle" },
+  gentle: { frequencyHigh: 440, gain: 0.3, waveType: "sine" },
+};
+
+function AlarmTestButton({ volume, soundType = "beep" }: { volume: number; soundType?: AlertSoundType }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<{
     oscillator: OscillatorNode;
@@ -550,9 +690,10 @@ function AlarmTestButton({ volume }: { volume: number }) {
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
 
-      oscillator.frequency.value = 800;
-      oscillator.type = "square";
-      gainNode.gain.value = (volume / 100) * 0.5;
+      const config = SOUND_CONFIGS[soundType];
+      oscillator.frequency.value = config.frequencyHigh;
+      oscillator.type = config.waveType;
+      gainNode.gain.value = (volume / 100) * config.gain;
 
       oscillator.start();
       setIsPlaying(true);
@@ -565,9 +706,10 @@ function AlarmTestButton({ volume }: { volume: number }) {
 
   useEffect(() => {
     if (audioRef.current?.gainNode) {
-      audioRef.current.gainNode.gain.value = (volume / 100) * 0.5;
+      const config = SOUND_CONFIGS[soundType];
+      audioRef.current.gainNode.gain.value = (volume / 100) * config.gain;
     }
-  }, [volume]);
+  }, [volume, soundType]);
 
   const stopAlarm = () => {
     if (audioRef.current) {

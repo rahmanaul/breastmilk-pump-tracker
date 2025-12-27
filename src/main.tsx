@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import "./index.css";
 
 // Import the generated route tree
@@ -22,8 +23,10 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ConvexAuthProvider client={convex}>
-      <RouterProvider router={router} />
-    </ConvexAuthProvider>
+    <ThemeProvider>
+      <ConvexAuthProvider client={convex}>
+        <RouterProvider router={router} />
+      </ConvexAuthProvider>
+    </ThemeProvider>
   </StrictMode>,
 );

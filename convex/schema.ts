@@ -85,6 +85,12 @@ export default defineSchema({
     defaultCycles: v.optional(v.number()), // e.g., 2 or 3
     // Alert settings
     alertVolume: v.number(), // 0-100
+    alertSound: v.optional(v.union(
+      v.literal("beep"),
+      v.literal("chime"),
+      v.literal("bell"),
+      v.literal("gentle")
+    )), // notification sound type
     // NEW: Session schedule with session types
     sessionSchedule: v.optional(v.array(scheduleItemValidator)),
     notificationsEnabled: v.optional(v.boolean()),

@@ -1,10 +1,48 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 
-// Constants for alarm configuration
-const ALARM_FREQUENCY_HIGH = 800; // Hz
-const ALARM_FREQUENCY_LOW = 600; // Hz
-const ALARM_PULSE_INTERVAL = 500; // ms
-const ALARM_GAIN = 0.5;
+// Sound types available for alarm
+export type AlertSoundType = "beep" | "chime" | "bell" | "gentle";
+
+// Sound configurations for different alert types
+interface SoundConfig {
+  frequencyHigh: number;
+  frequencyLow: number;
+  pulseInterval: number;
+  gain: number;
+  waveType: OscillatorType;
+}
+
+const SOUND_CONFIGS: Record<AlertSoundType, SoundConfig> = {
+  beep: {
+    frequencyHigh: 800,
+    frequencyLow: 600,
+    pulseInterval: 500,
+    gain: 0.5,
+    waveType: "square",
+  },
+  chime: {
+    frequencyHigh: 1200,
+    frequencyLow: 800,
+    pulseInterval: 300,
+    gain: 0.4,
+    waveType: "sine",
+  },
+  bell: {
+    frequencyHigh: 523, // C5
+    frequencyLow: 392, // G4
+    pulseInterval: 600,
+    gain: 0.5,
+    waveType: "triangle",
+  },
+  gentle: {
+    frequencyHigh: 440, // A4
+    frequencyLow: 330, // E4
+    pulseInterval: 800,
+    gain: 0.3,
+    waveType: "sine",
+  },
+};
+
 const VIBRATE_PATTERN = [500, 200, 500, 200, 500, 200] as const;
 const VIBRATE_REPEAT_INTERVAL = 2000; // ms
 const NOTIFICATION_AUTO_CLOSE_TIMEOUT = 30000; // ms
@@ -12,17 +50,24 @@ const NOTIFICATION_AUTO_CLOSE_TIMEOUT = 30000; // ms
 interface AudioAlertState {
   isPlaying: boolean;
   isPending: boolean; // Alarm should play but blocked by autoplay policy
+  soundType: AlertSoundType;
+  setSoundType: (type: AlertSoundType) => void;
   play: (message?: string) => Promise<void>;
   stop: () => void;
   requestPermissions: () => Promise<boolean>;
   retryPlay: () => Promise<void>; // Retry playing when user interacts
+  previewSound: (type: AlertSoundType) => void; // Preview a sound type
+  stopPreview: () => void;
 }
 
-export function useAudioAlert(): AudioAlertState {
+export function useAudioAlert(initialSoundType: AlertSoundType = "beep"): AudioAlertState {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPending, setIsPending] = useState(false); // Alarm pending due to autoplay block
+  const [soundType, setSoundType] = useState<AlertSoundType>(initialSoundType);
   const audioContextRef = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
+  const previewOscillatorRef = useRef<OscillatorNode | null>(null);
+  const previewContextRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<number | null>(null);
   const vibrateIntervalRef = useRef<number | null>(null);
   const isPlayingRef = useRef(false); // Synchronous check to prevent race conditions
@@ -31,6 +76,12 @@ export function useAudioAlert(): AudioAlertState {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const notificationRef = useRef<Notification | null>(null);
   const notificationTimeoutRef = useRef<number | null>(null);
+  const soundTypeRef = useRef<AlertSoundType>(initialSoundType);
+
+  // Keep soundTypeRef in sync
+  useEffect(() => {
+    soundTypeRef.current = soundType;
+  }, [soundType]);
 
   // Re-acquire wake lock when page becomes visible again
   useEffect(() => {
@@ -87,6 +138,9 @@ export function useAudioAlert(): AudioAlertState {
         return false;
       }
 
+      // Get sound configuration based on current sound type
+      const config = SOUND_CONFIGS[soundTypeRef.current];
+
       // Create oscillator for alarm sound
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -94,10 +148,10 @@ export function useAudioAlert(): AudioAlertState {
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
 
-      // Loud, attention-grabbing alarm
-      oscillator.frequency.value = ALARM_FREQUENCY_HIGH;
-      oscillator.type = "square";
-      gainNode.gain.value = ALARM_GAIN;
+      // Configure based on sound type
+      oscillator.frequency.value = config.frequencyHigh;
+      oscillator.type = config.waveType;
+      gainNode.gain.value = config.gain;
 
       oscillator.start();
       oscillatorRef.current = oscillator;
@@ -106,10 +160,10 @@ export function useAudioAlert(): AudioAlertState {
       let high = true;
       intervalRef.current = window.setInterval(() => {
         if (oscillatorRef.current) {
-          oscillatorRef.current.frequency.value = high ? ALARM_FREQUENCY_HIGH : ALARM_FREQUENCY_LOW;
+          oscillatorRef.current.frequency.value = high ? config.frequencyHigh : config.frequencyLow;
           high = !high;
         }
-      }, ALARM_PULSE_INTERVAL);
+      }, config.pulseInterval);
 
       // Try to trigger vibration on mobile (continuous pattern)
       if ("vibrate" in navigator) {
@@ -263,5 +317,84 @@ export function useAudioAlert(): AudioAlertState {
     setIsPending(false);
   }, []);
 
-  return { isPlaying, isPending, play, stop, requestPermissions, retryPlay };
+  // Preview a sound type (plays briefly)
+  const previewSound = useCallback((type: AlertSoundType) => {
+    // Stop any existing preview
+    if (previewOscillatorRef.current) {
+      try {
+        previewOscillatorRef.current.stop();
+        previewOscillatorRef.current.disconnect();
+      } catch {
+        // Ignore
+      }
+    }
+
+    try {
+      if (!previewContextRef.current) {
+        const AudioContextClass =
+          window.AudioContext || (window as any).webkitAudioContext;
+        previewContextRef.current = new AudioContextClass();
+      }
+      const audioContext = previewContextRef.current;
+
+      if (audioContext.state === "suspended") {
+        void audioContext.resume();
+      }
+
+      const config = SOUND_CONFIGS[type];
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = config.frequencyHigh;
+      oscillator.type = config.waveType;
+      gainNode.gain.value = config.gain;
+
+      oscillator.start();
+      previewOscillatorRef.current = oscillator;
+
+      // Stop after 1 second
+      setTimeout(() => {
+        try {
+          oscillator.stop();
+          oscillator.disconnect();
+          if (previewOscillatorRef.current === oscillator) {
+            previewOscillatorRef.current = null;
+          }
+        } catch {
+          // Ignore
+        }
+      }, 1000);
+    } catch (error) {
+      console.error("Failed to preview sound:", error);
+    }
+  }, []);
+
+  // Stop preview sound
+  const stopPreview = useCallback(() => {
+    if (previewOscillatorRef.current) {
+      try {
+        previewOscillatorRef.current.stop();
+        previewOscillatorRef.current.disconnect();
+      } catch {
+        // Ignore
+      }
+      previewOscillatorRef.current = null;
+    }
+  }, []);
+
+  return {
+    isPlaying,
+    isPending,
+    soundType,
+    setSoundType,
+    play,
+    stop,
+    requestPermissions,
+    retryPlay,
+    previewSound,
+    stopPreview,
+  };
 }

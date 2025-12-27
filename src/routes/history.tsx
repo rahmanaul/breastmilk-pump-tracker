@@ -14,11 +14,11 @@ import {
   startOfMonth,
   endOfMonth,
 } from "date-fns";
-import { Clock, Zap, Trash2, AlertCircle, Check, X, Download } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Download } from "lucide-react";
 import { HistoryListSkeleton } from "@/components/skeletons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ExportDialog } from "@/components/ExportDialog";
+import { SwipeableSessionCard } from "@/components/SwipeableSessionCard";
 import type { SessionExport, SummaryStatsExport } from "@/lib/export";
 
 export const Route = createFileRoute("/history")({
@@ -63,15 +63,7 @@ function getDateRange(filter: DateFilter): { start: number; end: number } {
   }
 }
 
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) {
-    return `${mins}m`;
-  }
-  const hours = Math.floor(mins / 60);
-  const remainingMins = mins % 60;
-  return `${hours}h ${remainingMins}m`;
-}
+// formatDuration moved to SwipeableSessionCard component
 
 function History() {
   const [filter, setFilter] = useState<DateFilter>("week");
@@ -354,7 +346,7 @@ function History() {
               </h3>
               <div className="space-y-2">
                 {groupedSessions[date]?.map((session) => (
-                  <SessionCard
+                  <SwipeableSessionCard
                     key={session._id}
                     session={session as SessionData}
                     isExpanded={selectedSession === session._id}
@@ -478,7 +470,7 @@ const VirtualizedSessionList = memo(function VirtualizedSessionList({
                 </h3>
               ) : (
                 <div className="pb-2">
-                  <SessionCard
+                  <SwipeableSessionCard
                     session={row.session}
                     isExpanded={selectedSession === row.session._id}
                     onToggle={onToggle}
@@ -495,220 +487,4 @@ const VirtualizedSessionList = memo(function VirtualizedSessionList({
   );
 });
 
-interface SessionCardProps {
-  session: SessionData;
-  isExpanded: boolean;
-  onToggle: (id: string) => void;
-  onCollapse: () => void;
-  onDelete: (id: string) => Promise<void>;
-}
-
-// Memoized SessionCard component to prevent unnecessary re-renders
-const SessionCard = memo(function SessionCard({
-  session,
-  isExpanded,
-  onToggle,
-  onCollapse,
-  onDelete,
-}: SessionCardProps) {
-  const isRegular = session.sessionType === "regular";
-  const isLate = session.latenessMinutes !== undefined && session.latenessMinutes > 0;
-  const isCompleted = session.isCompleted ?? true;
-
-  // Memoized toggle handler - uses stable callbacks
-  const handleToggle = useCallback(() => {
-    if (isExpanded) {
-      onCollapse();
-    } else {
-      onToggle(session._id);
-    }
-  }, [isExpanded, onToggle, onCollapse, session._id]);
-
-  // Memoized delete handler
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      void onDelete(session._id);
-    },
-    [onDelete, session._id]
-  );
-
-  return (
-    <Card
-      className={cn(
-        "cursor-pointer transition-colors",
-        isExpanded && "ring-2 ring-primary"
-      )}
-      onClick={handleToggle}
-    >
-      <CardContent className="py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                "h-10 w-10 rounded-full flex items-center justify-center",
-                isRegular
-                  ? "bg-blue-100 dark:bg-blue-900"
-                  : "bg-amber-100 dark:bg-amber-900"
-              )}
-            >
-              {isRegular ? (
-                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              ) : (
-                <Zap className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="font-medium capitalize">{session.sessionType}</p>
-                {/* Lateness indicator */}
-                {isLate && (
-                  <span className="text-xs text-yellow-600 flex items-center gap-0.5">
-                    <AlertCircle className="h-3 w-3" />
-                    {session.latenessMinutes}m
-                  </span>
-                )}
-                {/* Completion status */}
-                {isCompleted ? (
-                  <Check className="h-4 w-4 text-green-600" />
-                ) : (
-                  <X className="h-4 w-4 text-red-600" />
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {format(new Date(session.startTime), "h:mm a")}
-                {session.endTime &&
-                  ` - ${format(new Date(session.endTime), "h:mm a")}`}
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="font-semibold">{session.volume || 0} ml</p>
-            <p className="text-sm text-muted-foreground">
-              {formatDuration(session.totalPumpDuration || 0)} pump
-            </p>
-          </div>
-        </div>
-
-        {/* Expanded Details */}
-        {isExpanded && (
-          <div className="mt-4 pt-4 border-t space-y-3">
-            {/* Lateness and Completion Status */}
-            <div className="flex gap-4 text-sm">
-              <div
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded",
-                  isLate
-                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"
-                    : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                )}
-              >
-                {isLate ? (
-                  <>
-                    <AlertCircle className="h-3 w-3" />
-                    Telat {session.latenessMinutes} menit
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-3 w-3" />
-                    Tepat waktu
-                  </>
-                )}
-              </div>
-              <div
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded",
-                  isCompleted
-                    ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                    : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
-                )}
-              >
-                {isCompleted ? (
-                  <>
-                    <Check className="h-3 w-3" />
-                    Tuntas
-                  </>
-                ) : (
-                  <>
-                    <X className="h-3 w-3" />
-                    Tidak tuntas
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Waktu Pump</p>
-                <p className="font-medium">
-                  {formatDuration(session.totalPumpDuration || 0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Waktu Istirahat</p>
-                <p className="font-medium">
-                  {formatDuration(session.totalRestDuration || 0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Interval</p>
-                <p className="font-medium">{session.intervals.length}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total Waktu</p>
-                <p className="font-medium">
-                  {formatDuration(
-                    (session.totalPumpDuration || 0) +
-                      (session.totalRestDuration || 0)
-                  )}
-                </p>
-              </div>
-            </div>
-
-            {session.notes && (
-              <div className="text-sm">
-                <p className="text-muted-foreground">Catatan</p>
-                <p className="font-medium">{session.notes}</p>
-              </div>
-            )}
-
-            {/* Interval Timeline */}
-            <div className="text-sm">
-              <p className="text-muted-foreground mb-2">Interval</p>
-              <div className="flex gap-1 flex-wrap">
-                {session.intervals.map((interval, idx) => {
-                  const duration = interval.endTime
-                    ? Math.round((interval.endTime - interval.startTime) / 1000)
-                    : 0;
-                  return (
-                    <div
-                      key={idx}
-                      className={cn(
-                        "px-2 py-1 rounded text-xs",
-                        interval.type === "pump"
-                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                          : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                      )}
-                    >
-                      {interval.type === "pump" ? "P" : "R"}: {formatDuration(duration)}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full"
-              onClick={handleDelete}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Hapus Sesi
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-});
+// SessionCard moved to SwipeableSessionCard component

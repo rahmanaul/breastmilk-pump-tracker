@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
 import { useMutationWithRetry } from "@/hooks/useMutationWithRetry";
+import { useConfetti } from "@/hooks/useConfetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -171,6 +172,7 @@ function Session() {
     : null;
 
   const audioAlert = useAudioAlert();
+  const confetti = useConfetti();
 
   const timer = useTimer({
     intervals: timerConfig?.intervals,
@@ -419,7 +421,7 @@ function Session() {
 
           {/* Session Complete Overlay */}
           {timer.isSessionComplete && (
-            <SessionCompleteOverlay onFinish={handleStopSession} />
+            <SessionCompleteOverlay onFinish={handleStopSession} onShow={confetti.celebration} />
           )}
         </>
       )}
@@ -919,9 +921,18 @@ function AlarmOverlay({
 
 function SessionCompleteOverlay({
   onFinish,
+  onShow,
 }: {
   onFinish: () => void;
+  onShow?: () => void;
 }) {
+  // Trigger confetti when overlay shows
+  useEffect(() => {
+    if (onShow) {
+      onShow();
+    }
+  }, [onShow]);
+
   return (
     <div className="fixed inset-0 z-50 bg-green-600/95 flex items-center justify-center">
       <div className="text-center space-y-6">

@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { api } from "../../convex/_generated/api";
+import { useMutationWithRetry } from "@/hooks/useMutationWithRetry";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -14,6 +16,8 @@ import {
   ArrowRight,
   AlertCircle,
   X,
+  Zap,
+  PlayCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -41,8 +45,11 @@ function formatScheduleTime(time: string): string {
 }
 
 function Dashboard() {
+  const navigate = useNavigate();
+
   // Track current time for schedule updates (refresh every minute)
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [isQuickStarting, setIsQuickStarting] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -69,6 +76,13 @@ function Dashboard() {
     clientNow,
   });
   const todaySessions = useQuery(api.sessions.getToday);
+  const defaults = useQuery(api.preferences.getDefaults);
+  const currentSession = useQuery(api.sessions.getCurrent);
+
+  const { mutate: startSession } = useMutationWithRetry(api.sessions.start, {
+    errorMessage: "Gagal memulai sesi",
+    retryMessage: "Mencoba memulai sesi...",
+  });
 
   const totalVolume = todaySessions?.reduce((sum, s) => sum + (s.volume || 0), 0) || 0;
   const totalPumpTime = todaySessions?.reduce((sum, s) => sum + (s.totalPumpDuration || 0), 0) || 0;
@@ -79,6 +93,68 @@ function Dashboard() {
   ).length || 0;
   const totalScheduled = scheduleStatus?.length || 0;
   const progressPercent = totalScheduled > 0 ? (completedCount / totalScheduled) * 100 : 0;
+
+  // Quick start handler - starts session with default settings and navigates to timer
+  const handleQuickStart = useCallback(async (sessionType: "regular" | "power" = "regular") => {
+    if (!defaults) return;
+
+    // Check if there's already an active session
+    if (currentSession && currentSession.status === "in_progress") {
+      toast.info("Kamu punya sesi yang sedang berjalan", {
+        description: "Lanjutkan sesi yang ada atau batalkan dulu",
+      });
+      void navigate({ to: "/session", search: { resume: currentSession._id } });
+      return;
+    }
+
+    setIsQuickStarting(true);
+
+    try {
+      // Build intervals from defaults
+      const pumpDuration = defaults.pumpDuration;
+      const restDuration = defaults.restDuration;
+      const cycles = defaults.cycles;
+
+      const intervals: Array<{ id: string; type: "pump" | "rest"; duration: number }> = [];
+      for (let i = 0; i < cycles; i++) {
+        intervals.push({
+          id: `pump-${i}`,
+          type: "pump",
+          duration: pumpDuration,
+        });
+        if (i < cycles - 1) {
+          intervals.push({
+            id: `rest-${i}`,
+            type: "rest",
+            duration: restDuration,
+          });
+        }
+      }
+
+      const timerConfig = {
+        mode: "simple" as const,
+        intervals,
+        pumpDuration,
+        restDuration,
+        cycles,
+      };
+
+      const sessionId = await startSession({
+        sessionType,
+        timerConfig,
+      });
+
+      if (sessionId) {
+        toast.success("Sesi dimulai!");
+        void navigate({ to: "/session", search: { resume: sessionId } });
+      }
+    } catch (error) {
+      console.error("Quick start failed:", error);
+      toast.error("Gagal memulai sesi cepat");
+    } finally {
+      setIsQuickStarting(false);
+    }
+  }, [defaults, currentSession, startSession, navigate]);
 
   return (
     <div className="p-4 space-y-6">
@@ -97,6 +173,46 @@ function Dashboard() {
           </Button>
         </Link>
       </div>
+
+      {/* Quick Start Buttons */}
+      <Card>
+        <CardContent className="pt-4 pb-3">
+          <p className="text-sm font-medium mb-3">Mulai Cepat</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-12 flex flex-col gap-0.5"
+              onClick={() => void handleQuickStart("regular")}
+              disabled={isQuickStarting || !defaults}
+            >
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                <PlayCircle className="h-3 w-3" />
+              </div>
+              <span className="text-xs">Regular</span>
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              className="h-12 flex flex-col gap-0.5 bg-amber-600 hover:bg-amber-700"
+              onClick={() => void handleQuickStart("power")}
+              disabled={isQuickStarting || !defaults}
+            >
+              <div className="flex items-center gap-1">
+                <Zap className="h-4 w-4" />
+                <PlayCircle className="h-3 w-3" />
+              </div>
+              <span className="text-xs">Power</span>
+            </Button>
+          </div>
+          {defaults && (
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              {Math.floor(defaults.pumpDuration / 60)}m pump x {defaults.cycles}, {Math.floor(defaults.restDuration / 60)}m istirahat
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Progress Card */}
       {totalScheduled > 0 && (

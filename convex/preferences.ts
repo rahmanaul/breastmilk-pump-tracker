@@ -30,6 +30,14 @@ const scheduleItemValidator = v.object({
   sessionType: v.optional(v.union(v.literal("regular"), v.literal("power"))),
 });
 
+// Alert sound type
+const alertSoundValidator = v.optional(v.union(
+  v.literal("beep"),
+  v.literal("chime"),
+  v.literal("bell"),
+  v.literal("gentle")
+));
+
 // Return type for preferences - includes both legacy and new fields
 const preferencesValidator = v.object({
   _id: v.id("userPreferences"),
@@ -47,6 +55,7 @@ const preferencesValidator = v.object({
   defaultCycles: v.optional(v.number()),
   // Alert settings
   alertVolume: v.number(),
+  alertSound: alertSoundValidator,
   // Schedule - can be old format or new format
   sessionSchedule: v.optional(v.array(v.any())),
   notificationsEnabled: v.optional(v.boolean()),
@@ -132,6 +141,7 @@ export const save = mutation({
     powerRestDuration: v.optional(v.number()),
     // Other settings
     alertVolume: v.optional(v.number()),
+    alertSound: alertSoundValidator,
     sessionSchedule: v.optional(v.array(scheduleItemValidator)),
     notificationsEnabled: v.optional(v.boolean()),
   },
@@ -193,6 +203,11 @@ export const save = mutation({
       data.powerRestDuration = args.powerRestDuration;
     }
 
+    // Handle alert sound
+    if (args.alertSound !== undefined) {
+      data.alertSound = args.alertSound;
+    }
+
     // Handle schedule
     if (args.sessionSchedule !== undefined) {
       data.sessionSchedule = args.sessionSchedule;
@@ -211,6 +226,7 @@ export const save = mutation({
       userId,
       onboardingCompleted: true,
       alertVolume: args.alertVolume ?? 100,
+      alertSound: args.alertSound,
       defaultPumpDuration: args.defaultPumpDuration ?? args.regularPumpDuration,
       defaultRestDuration: args.defaultRestDuration ?? args.regularRestDuration,
       defaultCycles: args.defaultCycles,

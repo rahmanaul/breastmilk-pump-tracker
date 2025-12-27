@@ -21,9 +21,11 @@ import {
   Legend,
 } from "recharts";
 import { format, parseISO } from "date-fns";
-import { Trophy, TrendingUp, Droplets, Calendar, Clock, Zap } from "lucide-react";
+import { Trophy, TrendingUp, Droplets, Calendar, Clock, Zap, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInView } from "react-intersection-observer";
+import { StatsExportDialog } from "@/components/StatsExportDialog";
+import type { DailyStatsExport, SummaryStatsExport } from "@/lib/export";
 
 export const Route = createFileRoute("/stats")({
   component: Stats,
@@ -91,16 +93,59 @@ function Stats() {
     [dailyStats]
   );
 
+  // Convert data for export
+  const exportableDailyStats = useMemo((): DailyStatsExport[] => {
+    if (!dailyStats) return [];
+    return dailyStats;
+  }, [dailyStats]);
+
+  const exportableSummary = useMemo((): SummaryStatsExport | undefined => {
+    if (!summary) return undefined;
+    return summary;
+  }, [summary]);
+
+  // Get period type and label for export
+  const periodType = useMemo((): "week" | "month" => {
+    return timeRange <= 7 ? "week" : "month";
+  }, [timeRange]);
+
+  const periodLabel = useMemo(() => {
+    switch (timeRange) {
+      case 7:
+        return "7 Hari";
+      case 14:
+        return "14 Hari";
+      case 30:
+        return "30 Hari";
+    }
+  }, [timeRange]);
+
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-6 print:p-0">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Statistics</h1>
-        <p className="text-muted-foreground">Track your progress over time</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Statistik</h1>
+          <p className="text-muted-foreground">Lacak progres dari waktu ke waktu</p>
+        </div>
+        {dailyStats && dailyStats.length > 0 && exportableSummary && (
+          <StatsExportDialog
+            dailyStats={exportableDailyStats}
+            summary={exportableSummary}
+            periodType={periodType}
+            periodLabel={periodLabel}
+            trigger={
+              <Button variant="outline" size="sm" className="print:hidden">
+                <Download className="h-4 w-4 mr-2" />
+                Ekspor
+              </Button>
+            }
+          />
+        )}
       </div>
 
       {/* Time Range Selector */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 print:hidden">
         {([7, 14, 30] as TimeRange[]).map((days) => (
           <Button
             key={days}
@@ -108,7 +153,7 @@ function Stats() {
             size="sm"
             onClick={() => setTimeRange(days)}
           >
-            {days} Days
+            {days} Hari
           </Button>
         ))}
       </div>

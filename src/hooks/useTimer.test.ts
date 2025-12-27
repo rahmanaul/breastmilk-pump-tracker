@@ -592,4 +592,313 @@ describe("useTimer", () => {
       expect(onAllCyclesComplete).toHaveBeenCalled();
     });
   });
+
+  describe("custom intervals", () => {
+    it("should accept custom intervals array", () => {
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 120 },
+            { id: "2", type: "rest", duration: 60 },
+            { id: "3", type: "pump", duration: 90 },
+          ],
+        })
+      );
+
+      expect(result.current.totalPumps).toBe(2);
+      expect(result.current.totalIntervals).toBe(3);
+      expect(result.current.configuredIntervals).toHaveLength(3);
+    });
+
+    it("should use correct duration for each custom interval", () => {
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 120 },
+            { id: "2", type: "rest", duration: 60 },
+            { id: "3", type: "pump", duration: 90 },
+          ],
+        })
+      );
+
+      expect(result.current.targetSeconds).toBe(120);
+
+      act(() => {
+        result.current.start();
+      });
+
+      // First interval: pump 120s
+      expect(result.current.targetSeconds).toBe(120);
+      expect(result.current.currentIntervalType).toBe("pump");
+
+      act(() => {
+        vi.advanceTimersByTime(120000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      // Second interval: rest 60s
+      expect(result.current.targetSeconds).toBe(60);
+      expect(result.current.currentIntervalType).toBe("rest");
+
+      act(() => {
+        vi.advanceTimersByTime(60000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      // Third interval: pump 90s
+      expect(result.current.targetSeconds).toBe(90);
+      expect(result.current.currentIntervalType).toBe("pump");
+    });
+
+    it("should handle custom intervals with different durations per pump", () => {
+      // Simulate: 20 min pump -> 10 min rest -> 10 min pump -> 5 min rest
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 1200 }, // 20 min
+            { id: "2", type: "rest", duration: 600 },  // 10 min
+            { id: "3", type: "pump", duration: 600 },  // 10 min
+            { id: "4", type: "rest", duration: 300 },  // 5 min
+          ],
+        })
+      );
+
+      expect(result.current.totalPumps).toBe(2);
+      expect(result.current.totalIntervals).toBe(4);
+
+      act(() => {
+        result.current.start();
+      });
+
+      // First pump: 20 min
+      expect(result.current.targetSeconds).toBe(1200);
+      expect(result.current.currentPump).toBe(1);
+
+      // Advance past first pump
+      act(() => {
+        vi.advanceTimersByTime(1200000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      // First rest: 10 min
+      expect(result.current.targetSeconds).toBe(600);
+      expect(result.current.currentIntervalType).toBe("rest");
+
+      // Advance past first rest
+      act(() => {
+        vi.advanceTimersByTime(600000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      // Second pump: 10 min (different from first!)
+      expect(result.current.targetSeconds).toBe(600);
+      expect(result.current.currentIntervalType).toBe("pump");
+      expect(result.current.currentPump).toBe(2);
+    });
+
+    it("should track currentIntervalIndex correctly", () => {
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 10 },
+            { id: "2", type: "rest", duration: 5 },
+            { id: "3", type: "pump", duration: 10 },
+          ],
+        })
+      );
+
+      act(() => {
+        result.current.start();
+      });
+
+      expect(result.current.currentIntervalIndex).toBe(0);
+
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      expect(result.current.currentIntervalIndex).toBe(1);
+
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      expect(result.current.currentIntervalIndex).toBe(2);
+    });
+
+    it("should call onIntervalComplete callback", () => {
+      const onIntervalComplete = vi.fn();
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "pump-1", type: "pump", duration: 10 },
+            { id: "rest-1", type: "rest", duration: 5 },
+          ],
+          onIntervalComplete,
+        })
+      );
+
+      act(() => {
+        result.current.start();
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      expect(onIntervalComplete).toHaveBeenCalledWith(0, {
+        id: "pump-1",
+        type: "pump",
+        duration: 10,
+      });
+    });
+
+    it("should complete session after last custom interval", () => {
+      const onAllCyclesComplete = vi.fn();
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 5 },
+            { id: "2", type: "rest", duration: 3 },
+          ],
+          onAllCyclesComplete,
+        })
+      );
+
+      act(() => {
+        result.current.start();
+      });
+
+      // Complete pump
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      expect(result.current.isSessionComplete).toBe(false);
+
+      // Complete rest (last interval)
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      expect(result.current.isSessionComplete).toBe(true);
+      expect(onAllCyclesComplete).toHaveBeenCalled();
+    });
+
+    it("should generate intervals from legacy options when intervals not provided", () => {
+      const { result } = renderHook(() =>
+        useTimer({
+          pumpDuration: 120,
+          restDuration: 60,
+          totalPumps: 2,
+        })
+      );
+
+      // Should generate: pump -> rest -> pump (3 intervals)
+      expect(result.current.configuredIntervals).toHaveLength(3);
+      expect(result.current.configuredIntervals[0].type).toBe("pump");
+      expect(result.current.configuredIntervals[0].duration).toBe(120);
+      expect(result.current.configuredIntervals[1].type).toBe("rest");
+      expect(result.current.configuredIntervals[1].duration).toBe(60);
+      expect(result.current.configuredIntervals[2].type).toBe("pump");
+      expect(result.current.configuredIntervals[2].duration).toBe(120);
+    });
+
+    it("should support resumeFromState with currentIntervalIndex", () => {
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 10 },
+            { id: "2", type: "rest", duration: 5 },
+            { id: "3", type: "pump", duration: 10 },
+          ],
+        })
+      );
+
+      act(() => {
+        result.current.resumeFromState({
+          currentIntervalIndex: 1, // Resuming at rest interval
+          elapsedInCurrentInterval: 3,
+          completedIntervals: [
+            { type: "pump", startTime: 0, endTime: 10000, duration: 10 },
+          ],
+        });
+      });
+
+      expect(result.current.isRunning).toBe(true);
+      expect(result.current.currentIntervalIndex).toBe(1);
+      expect(result.current.currentIntervalType).toBe("rest");
+      expect(result.current.elapsedSeconds).toBe(3);
+      expect(result.current.targetSeconds).toBe(5);
+    });
+
+    it("should handle custom intervals ending with rest", () => {
+      // Some users might want: pump -> rest -> pump -> rest (end)
+      const { result } = renderHook(() =>
+        useTimer({
+          intervals: [
+            { id: "1", type: "pump", duration: 10 },
+            { id: "2", type: "rest", duration: 5 },
+            { id: "3", type: "pump", duration: 10 },
+            { id: "4", type: "rest", duration: 5 }, // Ends with rest
+          ],
+        })
+      );
+
+      act(() => {
+        result.current.start();
+      });
+
+      // Complete all intervals
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      act(() => {
+        result.current.switchInterval();
+      });
+
+      expect(result.current.isSessionComplete).toBe(true);
+    });
+  });
 });

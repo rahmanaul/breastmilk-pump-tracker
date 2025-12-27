@@ -9,12 +9,33 @@ const intervalValidator = v.object({
   endTime: v.optional(v.number()), // timestamp ms
 });
 
-// Timer configuration per session
-const timerConfigValidator = v.object({
+// Timer configuration per session (legacy format for backward compatibility)
+const legacyTimerConfigValidator = v.object({
   pumpDuration: v.number(), // seconds
   restDuration: v.number(), // seconds
   cycles: v.number(), // number of pump-rest cycles
 });
+
+// Custom interval for step-by-step builder
+const customIntervalValidator = v.object({
+  id: v.string(), // UUID for stable identification
+  type: v.union(v.literal("pump"), v.literal("rest")),
+  duration: v.number(), // seconds
+});
+
+// Timer configuration V2 - supports both simple and custom modes
+const timerConfigV2Validator = v.object({
+  mode: v.union(v.literal("simple"), v.literal("custom")),
+  // Always present - the actual interval sequence to execute
+  intervals: v.array(customIntervalValidator),
+  // Simple mode reference values (used when mode="simple")
+  pumpDuration: v.optional(v.number()), // seconds
+  restDuration: v.optional(v.number()), // seconds
+  cycles: v.optional(v.number()),
+});
+
+// Combined validator that accepts both old and new formats
+const timerConfigValidator = v.union(legacyTimerConfigValidator, timerConfigV2Validator);
 
 // Schedule item with session type (id and sessionType optional for backward compatibility)
 const scheduleItemValidator = v.object({

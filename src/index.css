@@ -121,3 +121,77 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Print styles */
+@media print {
+  /* Reset background and ensure text is readable */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+
+  /* Hide non-essential elements */
+  nav,
+  .navigation,
+  button:not(.print-visible),
+  .print\:hidden,
+  [data-radix-dialog-overlay],
+  [data-radix-dialog-content] {
+    display: none !important;
+  }
+
+  /* Show print-only elements */
+  .print\:block {
+    display: block !important;
+  }
+
+  /* Ensure cards have borders for print */
+  .card,
+  [class*="Card"] {
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure proper margins */
+  .p-4 {
+    padding: 0.5rem !important;
+  }
+
+  /* Remove dark mode styles for print */
+  .dark {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.4 0 0);
+  }
+
+  /* Hide navigation/bottom bar */
+  .fixed.bottom-0,
+  .fixed.top-0 {
+    display: none !important;
+  }
+
+  /* Page breaks */
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  /* Ensure sufficient contrast */
+  .text-muted-foreground {
+    color: #4b5563 !important;
+  }
+
+  /* Footer for each page */
+  @page {
+    margin: 1.5cm;
+    @bottom-center {
+      content: "Breastmilk Pump Tracker";
+    }
+  }
+}

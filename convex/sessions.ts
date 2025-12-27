@@ -8,11 +8,29 @@ const intervalValidator = v.object({
   endTime: v.optional(v.number()),
 });
 
-const timerConfigValidator = v.object({
+// Custom interval for step-by-step builder
+const customIntervalValidator = v.object({
+  id: v.string(),
+  type: v.union(v.literal("pump"), v.literal("rest")),
+  duration: v.number(), // seconds
+});
+
+// Timer configuration - supports both legacy and new formats
+const legacyTimerConfigValidator = v.object({
   pumpDuration: v.number(), // seconds
   restDuration: v.number(), // seconds
   cycles: v.number(), // number of pump-rest cycles
 });
+
+const timerConfigV2Validator = v.object({
+  mode: v.union(v.literal("simple"), v.literal("custom")),
+  intervals: v.array(customIntervalValidator),
+  pumpDuration: v.optional(v.number()),
+  restDuration: v.optional(v.number()),
+  cycles: v.optional(v.number()),
+});
+
+const timerConfigValidator = v.union(legacyTimerConfigValidator, timerConfigV2Validator);
 
 const sessionValidator = v.object({
   _id: v.id("pumpingSessions"),
@@ -42,12 +60,24 @@ export const start = mutation({
     // NEW: Optional schedule-linked fields
     scheduleSlotId: v.optional(v.string()),
     scheduledTime: v.optional(v.number()), // timestamp ms of scheduled time
+    // Timer config - supports both legacy and new formats
     timerConfig: v.optional(
-      v.object({
-        pumpDuration: v.number(),
-        restDuration: v.number(),
-        cycles: v.number(),
-      })
+      v.union(
+        // Legacy format
+        v.object({
+          pumpDuration: v.number(),
+          restDuration: v.number(),
+          cycles: v.number(),
+        }),
+        // New format with custom intervals
+        v.object({
+          mode: v.union(v.literal("simple"), v.literal("custom")),
+          intervals: v.array(customIntervalValidator),
+          pumpDuration: v.optional(v.number()),
+          restDuration: v.optional(v.number()),
+          cycles: v.optional(v.number()),
+        })
+      )
     ),
   },
   returns: v.id("pumpingSessions"),

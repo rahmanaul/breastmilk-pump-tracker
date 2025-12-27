@@ -14,10 +14,12 @@ import {
   startOfMonth,
   endOfMonth,
 } from "date-fns";
-import { Clock, Zap, Trash2, AlertCircle, Check, X } from "lucide-react";
+import { Clock, Zap, Trash2, AlertCircle, Check, X, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HistoryListSkeleton } from "@/components/skeletons";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ExportDialog } from "@/components/ExportDialog";
+import type { SessionExport, SummaryStatsExport } from "@/lib/export";
 
 export const Route = createFileRoute("/history")({
   component: History,
@@ -141,6 +143,102 @@ function History() {
     };
   }, [sessions]);
 
+  // Memoized: Convert sessions for export
+  const exportableSessions = useMemo((): SessionExport[] => {
+    if (!sessions) return [];
+    return sessions.map((s) => ({
+      _id: s._id,
+      sessionType: s.sessionType,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      volume: s.volume,
+      totalPumpDuration: s.totalPumpDuration,
+      totalRestDuration: s.totalRestDuration,
+      notes: s.notes,
+      latenessMinutes: s.latenessMinutes,
+      isCompleted: s.isCompleted,
+    }));
+  }, [sessions]);
+
+  // Memoized: Summary for export
+  const exportSummary = useMemo((): SummaryStatsExport | undefined => {
+    if (!sessions || sessions.length === 0) return undefined;
+
+    const regularSessions = sessions.filter((s) => s.sessionType === "regular");
+    const powerSessions = sessions.filter((s) => s.sessionType === "power");
+    const regularVolume = regularSessions.reduce((sum, s) => sum + (s.volume || 0), 0);
+    const powerVolume = powerSessions.reduce((sum, s) => sum + (s.volume || 0), 0);
+
+    // Group by day for avgVolumePerDay
+    const dailyVolumes = new Map<string, number>();
+    for (const session of sessions) {
+      const dateStr = format(new Date(session.startTime), "yyyy-MM-dd");
+      dailyVolumes.set(dateStr, (dailyVolumes.get(dateStr) || 0) + (session.volume || 0));
+    }
+
+    // Find best session and best day
+    let bestSession = sessions[0];
+    let bestDay: { date: string; volume: number } | null = null;
+
+    for (const s of sessions) {
+      if ((s.volume || 0) > (bestSession.volume || 0)) {
+        bestSession = s;
+      }
+    }
+
+    for (const [date, volume] of dailyVolumes) {
+      if (!bestDay || volume > bestDay.volume) {
+        bestDay = { date, volume };
+      }
+    }
+
+    return {
+      totalSessions,
+      totalVolume,
+      avgVolumePerSession: totalSessions > 0 ? Math.round(totalVolume / totalSessions) : 0,
+      avgVolumePerDay: dailyVolumes.size > 0 ? Math.round(totalVolume / dailyVolumes.size) : 0,
+      bestSession: bestSession ? {
+        volume: bestSession.volume || 0,
+        date: bestSession.startTime,
+        sessionType: bestSession.sessionType,
+      } : null,
+      bestDay,
+      regularStats: {
+        count: regularSessions.length,
+        totalVolume: regularVolume,
+        avgVolume: regularSessions.length > 0 ? Math.round(regularVolume / regularSessions.length) : 0,
+      },
+      powerStats: {
+        count: powerSessions.length,
+        totalVolume: powerVolume,
+        avgVolume: powerSessions.length > 0 ? Math.round(powerVolume / powerSessions.length) : 0,
+      },
+    };
+  }, [sessions, totalSessions, totalVolume]);
+
+  // Get period label for export
+  const periodLabel = useMemo(() => {
+    switch (filter) {
+      case "today":
+        return "Hari Ini";
+      case "week":
+        return "Minggu Ini";
+      case "month":
+        return "Bulan Ini";
+      default:
+        return "Semua Sesi";
+    }
+  }, [filter]);
+
+  // Get date range for export
+  const exportDateRange = useMemo(() => {
+    if (filter === "all" || !sessions || sessions.length === 0) return undefined;
+    return {
+      start: new Date(dateRange.start),
+      end: new Date(dateRange.end),
+    };
+  }, [filter, dateRange, sessions]);
+
   // Memoized: Flattened rows for virtualization
   const virtualRows = useMemo((): VirtualRow[] => {
     const rows: VirtualRow[] = [];
@@ -157,15 +255,31 @@ function History() {
   const useVirtualScrolling = totalSessions >= VIRTUAL_SCROLL_THRESHOLD;
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 print:p-0">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Riwayat</h1>
-        <p className="text-muted-foreground">Lihat sesi sebelumnya</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Riwayat</h1>
+          <p className="text-muted-foreground">Lihat sesi sebelumnya</p>
+        </div>
+        {sessions && sessions.length > 0 && (
+          <ExportDialog
+            sessions={exportableSessions}
+            summary={exportSummary}
+            dateRange={exportDateRange}
+            periodLabel={periodLabel}
+            trigger={
+              <Button variant="outline" size="sm" className="print:hidden">
+                <Download className="h-4 w-4 mr-2" />
+                Ekspor
+              </Button>
+            }
+          />
+        )}
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 print:hidden">
         {(["today", "week", "month", "all"] as DateFilter[]).map((f) => (
           <Button
             key={f}
@@ -182,6 +296,14 @@ function History() {
                   : "Semua"}
           </Button>
         ))}
+      </div>
+
+      {/* Print Header - only visible when printing */}
+      <div className="hidden print:block print:mb-4">
+        <h2 className="text-lg font-semibold">Laporan Sesi Pumping - {periodLabel}</h2>
+        <p className="text-sm text-muted-foreground">
+          Dicetak: {format(new Date(), "d MMMM yyyy, HH:mm")}
+        </p>
       </div>
 
       {/* Summary */}

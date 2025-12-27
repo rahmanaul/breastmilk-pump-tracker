@@ -92,11 +92,11 @@ New functionality to improve user experience.
 
 ### Data Export & Sharing
 
-- [ ] Export session data to CSV
-- [ ] Export session data to PDF report
-- [ ] Weekly/monthly summary reports
-- [ ] Share reports with healthcare providers
-- [ ] Print-friendly history view
+- [x] Export session data to CSV
+- [x] Export session data to PDF report
+- [x] Weekly/monthly summary reports
+- [x] Share reports with healthcare providers
+- [x] Print-friendly history view
 
 ### Push Notifications
 

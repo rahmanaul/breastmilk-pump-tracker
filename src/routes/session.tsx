@@ -32,9 +32,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { useTimer, type ResumeState, type TimerInterval } from "@/hooks/useTimer";
+import { useTimer, type ResumeState, type TimerInterval, type CustomInterval } from "@/hooks/useTimer";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
+import { IntervalBuilder, simpleToIntervals } from "@/components/IntervalBuilder";
 import { Square, RefreshCw, Zap, Clock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -61,11 +63,15 @@ export const Route = createFileRoute("/session")({
 
 type SessionType = "regular" | "power";
 type SessionPhase = "config" | "timer" | "complete";
+type ConfigMode = "simple" | "custom";
 
 interface TimerConfig {
-  pumpDuration: number; // seconds
-  restDuration: number; // seconds
-  pumpCount: number; // number of pump phases (e.g., 2 = pump→rest→pump)
+  mode: ConfigMode;
+  intervals: CustomInterval[]; // The actual interval sequence
+  // Simple mode reference values
+  pumpDuration?: number; // seconds
+  restDuration?: number; // seconds
+  pumpCount?: number; // number of pump phases
 }
 
 // Helper function to calculate resume state from session intervals
@@ -76,11 +82,11 @@ function calculateResumeState(
 
   // Convert intervals to TimerInterval format and find the open one
   const completedIntervals: TimerInterval[] = [];
-  let currentIntervalType: "pump" | "rest" = "pump";
+  let currentIntervalIndex = 0;
   let elapsedInCurrentInterval = 0;
-  let currentPump = 1;
 
-  for (const interval of intervals) {
+  for (let i = 0; i < intervals.length; i++) {
+    const interval = intervals[i];
     if (interval.endTime) {
       // Completed interval
       completedIntervals.push({
@@ -91,26 +97,15 @@ function calculateResumeState(
       });
     } else {
       // Open interval (current one)
-      currentIntervalType = interval.type;
+      currentIntervalIndex = i;
       elapsedInCurrentInterval = Math.floor((now - interval.startTime) / 1000);
     }
   }
 
-  // Calculate which pump we're on based on completed intervals
-  // Pattern: pump → rest → pump → rest → pump
-  const pumpIntervals = completedIntervals.filter(i => i.type === "pump");
-  if (currentIntervalType === "pump") {
-    currentPump = pumpIntervals.length + 1;
-  } else {
-    // We're in rest, so currentPump is the pump we just finished
-    currentPump = pumpIntervals.length;
-  }
-
   return {
-    currentIntervalType,
+    currentIntervalIndex,
     elapsedInCurrentInterval,
     completedIntervals,
-    currentPump: Math.max(1, currentPump),
   };
 }
 
@@ -178,6 +173,7 @@ function Session() {
   const audioAlert = useAudioAlert();
 
   const timer = useTimer({
+    intervals: timerConfig?.intervals,
     pumpDuration: timerConfig?.pumpDuration ?? 900,
     restDuration: timerConfig?.restDuration ?? 300,
     totalPumps: timerConfig?.pumpCount ?? 1,
@@ -209,17 +205,43 @@ function Session() {
       setSessionType(existingSession.sessionType);
 
       // Set timer config from saved config or use defaults
-      const config: TimerConfig = existingSession.timerConfig
-        ? {
-            pumpDuration: existingSession.timerConfig.pumpDuration,
-            restDuration: existingSession.timerConfig.restDuration,
-            pumpCount: existingSession.timerConfig.cycles,
-          }
-        : {
-            pumpDuration: defaults?.pumpDuration ?? 900,
-            restDuration: defaults?.restDuration ?? 300,
-            pumpCount: defaults?.cycles ?? 1,
-          };
+      let config: TimerConfig;
+      const savedConfig = existingSession.timerConfig;
+
+      if (savedConfig && "intervals" in savedConfig && savedConfig.intervals) {
+        // New format with intervals array
+        config = {
+          mode: savedConfig.mode || "simple",
+          intervals: savedConfig.intervals,
+          pumpDuration: savedConfig.pumpDuration,
+          restDuration: savedConfig.restDuration,
+          pumpCount: savedConfig.cycles,
+        };
+      } else if (savedConfig) {
+        // Legacy format - convert to intervals
+        const pumpDuration = savedConfig.pumpDuration ?? defaults?.pumpDuration ?? 900;
+        const restDuration = savedConfig.restDuration ?? defaults?.restDuration ?? 300;
+        const cycles = savedConfig.cycles ?? defaults?.cycles ?? 1;
+        config = {
+          mode: "simple",
+          intervals: simpleToIntervals(pumpDuration / 60, restDuration / 60, cycles),
+          pumpDuration,
+          restDuration,
+          pumpCount: cycles,
+        };
+      } else {
+        // No config - use defaults
+        const pumpDuration = defaults?.pumpDuration ?? 900;
+        const restDuration = defaults?.restDuration ?? 300;
+        const cycles = defaults?.cycles ?? 1;
+        config = {
+          mode: "simple",
+          intervals: simpleToIntervals(pumpDuration / 60, restDuration / 60, cycles),
+          pumpDuration,
+          restDuration,
+          pumpCount: cycles,
+        };
+      }
       setTimerConfig(config);
 
       // Calculate and set resume state
@@ -253,15 +275,25 @@ function Session() {
     }
 
     setTimerConfig(config);
+
+    // Build timer config for backend - include intervals for new format
+    const backendConfig = {
+      mode: config.mode,
+      intervals: config.intervals.map(i => ({
+        id: i.id,
+        type: i.type,
+        duration: i.duration,
+      })),
+      pumpDuration: config.pumpDuration,
+      restDuration: config.restDuration,
+      cycles: config.pumpCount,
+    };
+
     const id = await startSession({
       sessionType,
       scheduleSlotId: scheduleInfo?.slotId,
       scheduledTime: scheduleInfo?.scheduledTime,
-      timerConfig: {
-        pumpDuration: config.pumpDuration,
-        restDuration: config.restDuration,
-        cycles: config.pumpCount, // Backend stores as cycles, frontend uses pumpCount
-      },
+      timerConfig: backendConfig,
     });
 
     if (id) {
@@ -409,7 +441,7 @@ function Session() {
   );
 }
 
-// NEW: Session configuration screen
+// Session configuration screen with Simple/Custom mode toggle
 function SessionConfig({
   sessionType,
   onSessionTypeChange,
@@ -431,20 +463,50 @@ function SessionConfig({
   onResumeSession: () => void;
   onCancelAndStartNew: () => void;
 }) {
+  // Mode state
+  const [mode, setMode] = useState<ConfigMode>("simple");
+
+  // Simple mode state
   const [pumpMinutes, setPumpMinutes] = useState(Math.floor(defaults.pumpDuration / 60));
   const [restMinutes, setRestMinutes] = useState(Math.floor(defaults.restDuration / 60));
   const [pumpCount, setPumpCount] = useState(defaults.cycles);
 
-  // New calculation: N pumps = N*pumpMinutes + (N-1)*restMinutes
-  // Example: 2 pumps = pump→rest→pump = 2*pump + 1*rest
-  const totalMinutes = pumpCount * pumpMinutes + (pumpCount - 1) * restMinutes;
+  // Custom mode state - initialize from simple mode values
+  const [customIntervals, setCustomIntervals] = useState<CustomInterval[]>(() =>
+    simpleToIntervals(Math.floor(defaults.pumpDuration / 60), Math.floor(defaults.restDuration / 60), defaults.cycles)
+  );
+
+  // Calculate total minutes for simple mode
+  const simpleTotalMinutes = pumpCount * pumpMinutes + (pumpCount - 1) * restMinutes;
+
+  // Calculate total minutes for custom mode
+  const customTotalMinutes = customIntervals.reduce((sum, i) => sum + i.duration / 60, 0);
+
+  // When switching to custom mode, sync intervals from simple mode
+  const handleModeChange = (newMode: ConfigMode) => {
+    if (newMode === "custom" && mode === "simple") {
+      // Generate intervals from current simple mode settings
+      setCustomIntervals(simpleToIntervals(pumpMinutes, restMinutes, pumpCount));
+    }
+    setMode(newMode);
+  };
 
   const handleStart = () => {
-    onStart({
-      pumpDuration: pumpMinutes * 60,
-      restDuration: restMinutes * 60,
-      pumpCount,
-    });
+    if (mode === "simple") {
+      const intervals = simpleToIntervals(pumpMinutes, restMinutes, pumpCount);
+      onStart({
+        mode: "simple",
+        intervals,
+        pumpDuration: pumpMinutes * 60,
+        restDuration: restMinutes * 60,
+        pumpCount,
+      });
+    } else {
+      onStart({
+        mode: "custom",
+        intervals: customIntervals,
+      });
+    }
   };
 
   return (
@@ -526,87 +588,117 @@ function SessionConfig({
         </CardContent>
       </Card>
 
-      {/* Timer Settings */}
+      {/* Timer Settings with Mode Toggle */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Durasi Timer</CardTitle>
-          <CardDescription>Atur sesuai kebutuhan</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Durasi Timer</CardTitle>
+              <CardDescription>Atur sesuai kebutuhan</CardDescription>
+            </div>
+            <Tabs value={mode} onValueChange={(v) => handleModeChange(v as ConfigMode)}>
+              <TabsList className="grid grid-cols-2 h-8">
+                <TabsTrigger value="simple" className="text-xs px-3">Simple</TabsTrigger>
+                <TabsTrigger value="custom" className="text-xs px-3">Custom</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Pump Duration */}
-          <div className="flex items-center justify-between">
-            <Label>Durasi Pump</Label>
-            <Select
-              value={pumpMinutes.toString()}
-              onValueChange={(v) => setPumpMinutes(parseInt(v))}
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[5, 10, 15, 20, 25, 30].map((min) => (
-                  <SelectItem key={min} value={min.toString()}>
-                    {min} menit
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {mode === "simple" ? (
+            <>
+              {/* Simple Mode: Pump Duration */}
+              <div className="flex items-center justify-between">
+                <Label>Durasi Pump</Label>
+                <Select
+                  value={pumpMinutes.toString()}
+                  onValueChange={(v) => setPumpMinutes(parseInt(v))}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[5, 10, 15, 20, 25, 30].map((min) => (
+                      <SelectItem key={min} value={min.toString()}>
+                        {min} menit
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Rest Duration */}
-          <div className="flex items-center justify-between">
-            <Label>Durasi Istirahat</Label>
-            <Select
-              value={restMinutes.toString()}
-              onValueChange={(v) => setRestMinutes(parseInt(v))}
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[3, 5, 10, 15].map((min) => (
-                  <SelectItem key={min} value={min.toString()}>
-                    {min} menit
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Simple Mode: Rest Duration */}
+              <div className="flex items-center justify-between">
+                <Label>Durasi Istirahat</Label>
+                <Select
+                  value={restMinutes.toString()}
+                  onValueChange={(v) => setRestMinutes(parseInt(v))}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[3, 5, 10, 15].map((min) => (
+                      <SelectItem key={min} value={min.toString()}>
+                        {min} menit
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Pump Count */}
-          <div className="flex items-center justify-between">
-            <Label>Berapa kali pump</Label>
-            <Select
-              value={pumpCount.toString()}
-              onValueChange={(v) => setPumpCount(parseInt(v))}
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[1, 2, 3, 4].map((c) => (
-                  <SelectItem key={c} value={c.toString()}>
-                    {c}x pump
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Simple Mode: Pump Count */}
+              <div className="flex items-center justify-between">
+                <Label>Berapa kali pump</Label>
+                <Select
+                  value={pumpCount.toString()}
+                  onValueChange={(v) => setPumpCount(parseInt(v))}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4].map((c) => (
+                      <SelectItem key={c} value={c.toString()}>
+                        {c}x pump
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Visual explanation */}
-          {pumpCount > 1 && (
-            <p className="text-xs text-muted-foreground text-center">
-              {Array.from({ length: pumpCount }, () => "Pump").join(" → Istirahat → ")}
-            </p>
+              {/* Simple Mode: Visual explanation */}
+              {pumpCount > 1 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {Array.from({ length: pumpCount }, () => "Pump").join(" → Istirahat → ")}
+                </p>
+              )}
+
+              {/* Simple Mode: Total Time Display */}
+              <div className="pt-3 border-t">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Estimasi total</span>
+                  <span className="font-medium">~{simpleTotalMinutes} menit</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Custom Mode: Interval Builder */
+            <>
+              <IntervalBuilder
+                intervals={customIntervals}
+                onChange={setCustomIntervals}
+                maxIntervals={10}
+              />
+              {/* Custom Mode: Total Time Display */}
+              <div className="pt-3 border-t">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Estimasi total</span>
+                  <span className="font-medium">~{Math.round(customTotalMinutes)} menit</span>
+                </div>
+              </div>
+            </>
           )}
-
-          {/* Total Time Display */}
-          <div className="pt-3 border-t">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Estimasi total</span>
-              <span className="font-medium">~{totalMinutes} menit</span>
-            </div>
-          </div>
         </CardContent>
       </Card>
 

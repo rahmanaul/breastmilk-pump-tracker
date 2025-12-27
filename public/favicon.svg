@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="dropGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F8BBD9"/>
+      <stop offset="100%" style="stop-color:#E91E8C"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#FFF5F8"/>
+  
+  <!-- Milk drop shape -->
+  <path d="M32 8 C32 8 16 28 16 40 C16 49 23 56 32 56 C41 56 48 49 48 40 C48 28 32 8 32 8Z" 
+        fill="url(#dropGradient)"/>
+  
+  <!-- Small measurement lines inside drop (tracker element) -->
+  <line x1="24" y1="36" x2="30" y2="36" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <line x1="24" y1="42" x2="32" y2="42" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <line x1="24" y1="48" x2="28" y2="48" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  
+  <!-- Small heart accent -->
+  <path d="M36 38 C36 36 38 35 39.5 35 C41 35 42.5 36.5 42.5 38 C42.5 41 38 44 38 44 C38 44 33.5 41 33.5 38 C33.5 36.5 35 35 36.5 35 C38 35 38 36 38 38" 
+        fill="white" opacity="0.9" transform="scale(0.7) translate(20, 20)"/>
+</svg>

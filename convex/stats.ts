@@ -418,6 +418,15 @@ export const getAdherenceStats = query({
       sessionId?: typeof completedSessions[0]["_id"];
     }> = [];
 
+    // Group sessions by date for smarter matching
+    const sessionsByDate = new Map<string, typeof completedSessions>();
+    for (const session of completedSessions) {
+      const sessionDate = new Date(session.startTime).toISOString().split("T")[0];
+      const existing = sessionsByDate.get(sessionDate) || [];
+      existing.push(session);
+      sessionsByDate.set(sessionDate, existing);
+    }
+
     // Iterate through each day in the range
     for (let dayOffset = 0; dayOffset < args.days; dayOffset++) {
       const currentDate = new Date(startDate);
@@ -430,7 +439,14 @@ export const getAdherenceStats = query({
       }
       const dayStats = dailyStatsMap.get(dateStr)!;
 
-      // For each enabled schedule slot
+      // Get all sessions for this day and all slots for this day
+      const daySessions = [...(sessionsByDate.get(dateStr) || [])];
+      const daySlots: Array<{
+        slot: typeof enabledSlots[0];
+        scheduledTimestamp: number;
+      }> = [];
+
+      // Build list of slots for this day (only past slots)
       for (const slot of enabledSlots) {
         const [hours, minutes] = slot.time.split(":").map(Number);
         const scheduledTimestamp =
@@ -441,40 +457,59 @@ export const getAdherenceStats = query({
           continue;
         }
 
+        daySlots.push({ slot, scheduledTimestamp });
         dayStats.scheduled++;
+      }
 
-        // Find matching session for this slot on this day
-        // Try by scheduleSlotId first
+      // Smart matching: match each slot to closest available session
+      // Use greedy algorithm - for each slot, find closest unmatched session
+      const matchedSessionIds = new Set<string>();
+
+      for (const { slot, scheduledTimestamp } of daySlots) {
         let matchingSession: typeof completedSessions[0] | undefined;
 
+        // Priority 1: Try by scheduleSlotId first (explicit link)
         if (slot.id) {
           const slotSessions = sessionsBySlot.get(slot.id) || [];
           matchingSession = slotSessions.find((s) => {
             const sessionDate = new Date(s.startTime).toISOString().split("T")[0];
-            return sessionDate === dateStr;
+            return sessionDate === dateStr && !matchedSessionIds.has(s._id);
           });
         }
 
-        // Fallback: match by scheduledTime proximity
+        // Priority 2: Try by scheduledTime (explicit link)
         if (!matchingSession) {
-          matchingSession = sessionsByScheduledTime.get(scheduledTimestamp);
+          const sessionByTime = sessionsByScheduledTime.get(scheduledTimestamp);
+          if (sessionByTime && !matchedSessionIds.has(sessionByTime._id)) {
+            const sessionDate = new Date(sessionByTime.startTime).toISOString().split("T")[0];
+            if (sessionDate === dateStr) {
+              matchingSession = sessionByTime;
+            }
+          }
         }
 
-        // Fallback: match by startTime proximity (within 2 hours of scheduled time)
-        if (!matchingSession) {
-          matchingSession = completedSessions.find((s) => {
-            const sessionDate = new Date(s.startTime).toISOString().split("T")[0];
-            if (sessionDate !== dateStr) return false;
+        // Priority 3: Find closest unmatched session on same day
+        if (!matchingSession && daySessions.length > 0) {
+          let closestDiff = Infinity;
 
-            const timeDiff = Math.abs(s.startTime - scheduledTimestamp);
-            return timeDiff < 2 * 60 * 60 * 1000; // Within 2 hours
-          });
+          for (const session of daySessions) {
+            if (matchedSessionIds.has(session._id)) continue;
+
+            const timeDiff = Math.abs(session.startTime - scheduledTimestamp);
+            if (timeDiff < closestDiff) {
+              closestDiff = timeDiff;
+              matchingSession = session;
+            }
+          }
         }
 
         let status: "on_time" | "late" | "missed";
         let latenessMinutes: number | undefined;
 
         if (matchingSession) {
+          // Mark session as matched
+          matchedSessionIds.add(matchingSession._id);
+
           // Determine if on-time or late
           latenessMinutes = matchingSession.latenessMinutes;
 
